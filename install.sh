@@ -16,7 +16,7 @@ source ~/.bashrc
 
 # create conda virtual environment with dependencies
 conda config --add channels conda-forge
-conda create --yes --prefix python=3.11.9 /usr/conda/ape numpy scipy cython h5py pandas xarray pyyaml fastparquet pythia8 lhapdf
+conda create --yes --prefix /usr/conda/ape python=3.11.9 numpy scipy cython h5py pandas xarray pyyaml fastparquet pythia8 lhapdf
 
 # Activate environment
 conda activate /usr/conda/ape
