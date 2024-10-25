@@ -7,10 +7,10 @@ mode:  # Operation mode flags
     KEEP_RECORD: False  # Save xarray parton record - includes trajectory & pT history
 trento:  # Parameters used if Trento is run for initial conditions
     NORM: 20  # Overall normalization factor for reduced thickness function (and thereby multiplicity)
-    PROJ1: 'Pb'  # Collisions species 1
-    PROJ2: 'Pb'  # Collisions species 2
+    PROJ1: 'Au'  # Collisions species 1
+    PROJ2: 'Au'  # Collisions species 2
     NUCLEON_WIDTH: 0.92  # [fm] Gaussian nucleon width in fm. Default 0.92 fm from DukeQCD BA
-    CROSS_SECTION: 7.0  # [fm^2] Inelastic nucleon-nucleon cross section sigma_{NN} in fm^2 - Changes w/ beam energy
+    CROSS_SECTION: 4.23  # [fm^2] Inelastic nucleon-nucleon cross section sigma_{NN} in fm^2 - Changes w/ beam energy
     BMIN: None  # [fm] Minimum impact parameter. For no limits, set None.
     BMAX: None  # [fm] Maximum impact parameter. For no limits, set None.
     P: 0  # Nuclear overlap power parameter (default 0) -- Defines reduced thickness func.
