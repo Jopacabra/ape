@@ -566,6 +566,45 @@ class plasma_event:
         return minTemp
 
     # Method to find the maximum temperature of a plasma object
+    def temp_stats(self, resolution=100, time='i'):
+        if time == 'i':
+            time = self.t0
+        elif time == 'f':
+            time = self.tf
+        else:
+            pass
+
+        # Adapted from grid_reader.qgp_plot()
+        #
+        # Domains of physical positions to plot at (in fm)
+        # These limits of the linear space obtain the largest and smallest input value for
+        # the interpolating function's position inputs.
+        x_sample_space = self.xspace(resolution=resolution)
+
+        # Create arrays of each coordinate
+        # E.g. Here x_coords is a 2D array showing the x coordinates of each cell
+        # We necessarily must set time equal to a constant to plot in 2D.
+        x_coords, y_coords = np.meshgrid(x_sample_space, x_sample_space, indexing='ij')
+        # t_coords set to be an array matching the length of x_coords full of constant time
+        # Note that we select "initial time" as 0.5 fs by default
+        t_coords = np.full_like(x_coords, time)
+
+        # Put coordinates together into ordered pairs.
+        points = np.transpose(np.array([t_coords, x_coords, y_coords]), (2, 1, 0))
+
+        # Calculate temperatures and take maximum.
+        temp_threshold = 0.01  # threshold in GeV
+        fluid_cell_temps = self.temp(points)  # Get array of temps
+        fluid_cell_temps[(fluid_cell_temps < temp_threshold)] = np.nan  # Put all values < temp_threshold to np.nan
+        maxTemp = np.nanmax(fluid_cell_temps)
+        minTemp = np.nanmin(fluid_cell_temps)
+        meanTemp = np.nanmean(fluid_cell_temps)
+        medianTemp = np.nanmedian(fluid_cell_temps)
+        stdTemp = np.nanstd(fluid_cell_temps)
+
+        return maxTemp, minTemp, meanTemp, medianTemp, stdTemp
+
+    # Method to find the maximum temperature of a plasma object
     def ext_vec_mag(self, vec='vel', ext='max', resolution=100, time='i'):
         if time == 'i':
             time = self.t0

@@ -147,6 +147,14 @@ def run_event(eventNo):
     # This asks the hydro file object to interpolate the relevant functions and pass them on to the plasma object.
     event = plasma.plasma_event(event=file, name=eventNo, rmax=rmax)
 
+    # Compute temperature statistics for the hydro initial state (after freestreaming)
+    maxTemp, minTemp, meanTemp, medianTemp, stdTemp = event.temp_stats()
+    event_dataframe['Tmax_event'] = maxTemp
+    event_dataframe['Tmin_event'] = minTemp
+    event_dataframe['Tmean_event'] = meanTemp
+    event_dataframe['Tmedian_event'] = medianTemp
+    event_dataframe['Tstd_event'] = stdTemp
+
     # Create Cold Nuclear Matter effect interpolator
     CNM_interp = collision.CNM_RAA_interp()
 

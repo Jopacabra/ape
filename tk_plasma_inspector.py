@@ -486,8 +486,9 @@ class MainPage(tk.Frame):
         self.current_event = plasma.plasma_event(event=self.hydro_file)
 
         # Find current_event parameters
-        self.temp_max = self.current_event.max_temp()
-        self.temp_min = self.current_event.min_temp()
+        maxTemp, minTemp, meanTemp, medianTemp, stdTemp = self.current_event.temp_stats()
+        self.temp_max = maxTemp
+        self.temp_min = minTemp
         self.tau0 = self.current_event.t0
         self.tauf = self.current_event.tf
 

@@ -862,6 +862,8 @@ def generate_event(grid_max_target=config.transport.GRID_MAX_TARGET, grid_step=c
         logging.info('Problem pre-computing v_2 and psi_2!!!')
         pass
 
+    # Compute
+
 
     # # Save DukeQCD results file
     # logging.info('Saving event UrQMD observables...')
