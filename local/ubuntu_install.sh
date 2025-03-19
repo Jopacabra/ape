@@ -1,19 +1,19 @@
 #!/bin/bash
 # You should have already installed the prerequisites, e.g. with ubuntu_prereqs.sh
 # You should have already made a conda environment called "ape", e.g. by running
-# conda config --add channels conda-forge
-# conda create --yes -n ape numpy scipy cython h5py pandas xarray pyyaml fastparquet pythia8 lhapdf jupyter
+# the ubuntu_conda.sh script.
+# Ensure that you activate your environment with e.g. conda activate ape
 
-# Go to ape directory
-cd ~/ape
+# Get directory of script
+SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 
-# Activate environment
-source activate ape
-
-# Install fragmentation functions
-lhapdf install "JAM20-SIDIS_FF_hadron_nlo"
+# Activate conda
+source ~/anaconda3/bin/activate ~/anaconda3/envs/ape
+#conda activate ape
 
 # Debug print of working directory
+# Go to ape directory
+cd $SCRIPT_DIR/..
 pwd
 
 # Install hic - required for soft particle v2 analysis
@@ -21,7 +21,7 @@ pwd
 cd hic
 (
   [[ $PY_FLAGS ]] && export CFLAGS=$PY_FLAGS CXXFLAGS=$PY_FLAGS
-  exec python3 setup.py install
+  pip install .
 ) || exit 1
 cd ..
 
@@ -30,7 +30,7 @@ cd ..
 cd freestream
 (
   [[ $PY_FLAGS ]] && export CFLAGS=$PY_FLAGS CXXFLAGS=$PY_FLAGS
-  exec python3 setup.py install
+  pip install .
 ) || exit 1
 cd ..
 
@@ -38,7 +38,7 @@ cd ..
 cd frzout
 (
   [[ $PY_FLAGS ]] && export CFLAGS=$PY_FLAGS CXXFLAGS=$PY_FLAGS
-  exec python3 setup.py install
+  pip install .
 ) || exit 1
 cd ..
 
@@ -95,7 +95,7 @@ mkdir build && cd build
 # We install into /usr so we can access the binaries
 # We select to set native architecture optimization off.
 # This causes problems with many osg job sites.
-cmake -DCMAKE_INSTALL_PREFIX=~ -DNATIVE=OFF -DCMAKE_Fortran_COMPILER=/bin/gfortran -DCMAKE_Fortran_FLAGS=-fallow-argument-mismatch=True ..
+cmake -DCMAKE_INSTALL_PREFIX=~ -DNATIVE=OFF -DCMAKE_Fortran_FLAGS=-fallow-argument-mismatch=True ..
 # Install the module
 make install
 cd ..
