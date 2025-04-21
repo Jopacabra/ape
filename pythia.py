@@ -4,7 +4,8 @@ import pandas as pd
 import config
 
 # Function to generate a pp hard scattering at sqrt(s) = 5.02 TeV
-def scattering(pThatmin=config.jet.PTHATMIN, pThatmax=config.jet.PTHATMAX, do_shower=config.jet.PROCESS_CORRECTIONS):
+def scattering(pThatmin=config.jet.PTHATMIN, pThatmax=config.jet.PTHATMAX, do_shower=config.jet.PROCESS_CORRECTIONS,
+               type="dijet", min_pt=1):
     ############
     # Settings #
     ############
@@ -68,25 +69,50 @@ def scattering(pThatmin=config.jet.PTHATMIN, pThatmax=config.jet.PTHATMAX, do_sh
     pythia_process.readString("Beams:idA = 2212")
     pythia_process.readString("Beams:idB = 2212")
 
-    # Only do the parton level stuff
+    # Do the hard scattering process level stuff
     pythia_process.readString("ProcessLevel:all = on")
-    pythia_process.readString("PartonLevel:all = off")
-    # pythia_process.readString("PartonLevel:all = {}".format(do_shower))
-    # pythia_process.readString("PartonLevel:MPI = off")  # Multi-parton interactions
-    # pythia_process.readString("PartonLevel:ISR = off")
-    # # pythia_process.readString("PartonLevel:MPI = {}".format(do_shower))  # Multi-parton interactions
-    # # pythia_process.readString("PartonLevel:ISR = {}".format(
-    # #     do_shower))  # "Initial state" radiation with spacelike particles "before the hard process"
-    # pythia_process.readString("PartonLevel:FSR = off")  # "Final state" radiation with timelike particles
-    # pythia_process.readString("PartonLevel:Remnants = off")  # Turn off beam remnant adding
+
+    # # Choose what mode for the results
+    # if do_shower:
+    #     # Enable parton-level interactions -- things will happen after the hard scattering.
+    #     pythia_process.readString("PartonLevel:all = on")
+    #
+    #     # Turn off multi-parton interactions
+    #     pythia_process.readString("PartonLevel:MPI = off")
+    #
+    #     # Turn off "Initial state" radiation with spacelike particles "before the hard process"
+    #     pythia_process.readString("PartonLevel:ISR = off")
+    #     # pythia_process.readString("PartonLevel:MPI = {}".format(do_shower))  # Multi-parton interactions
+    #     # pythia_process.readString("PartonLevel:ISR = {}".format(
+    #     #     do_shower))  # "Initial state" radiation with spacelike particles "before the hard process"
+    #     pythia_process.readString("PartonLevel:FSR = off")  # "Final state" radiation with timelike particles
+    #     pythia_process.readString("PartonLevel:Remnants = off")  # Turn off beam remnant adding
+    #     pythia_process.readString("Check:event = off") # Turn off event checks -- Missing beam remnants!
+    # else:
+    #     pythia_process.readString("PartonLevel:all = off")
+    pythia_process.readString("PartonLevel:all = off")  # No showering business implemented yet.
+
+    # Only parton-level results, no hadronization
     pythia_process.readString("HadronLevel:all = off")
 
-    # Turn off event checks -- Missing beam remnants!
-    #pythia_process.readString("Check:event = off")
+    # Choose appropriate hard processes
+    if type == "dijet":  # Light quark and gluon dijets
+        # Processes that yield light quarks and gluons
+        pythia_process.readString("HardQCD:gg2gg = on")
+        pythia_process.readString("HardQCD:gg2qqbar = on")
+        pythia_process.readString("HardQCD:qg2qg = on")
+        pythia_process.readString("HardQCD:qq2qq = on")
+        pythia_process.readString("HardQCD:qqbar2gg = on")
+        pythia_process.readString("HardQCD:qqbar2qqbarNew = on")
 
-    # Turn on all hard QCD processes
-    pythia_process.readString("HardQCD:all = {}".format(not do_shower))
-    pythia_process.readString("HardQCD:3parton = {}".format(do_shower))
+    elif type == "gamma-jet":
+        pythia_process.readString("PromptPhoton:qg2qgamma = on")
+        pythia_process.readString("PromptPhoton:qqbar2ggamma = on")
+        pythia_process.readString("PromptPhoton:gg2ggamma = on")
+
+    # There are some other process types we should consider for other purposes.
+    # pythia_process.readString("HardQCD:3parton = on")  # 3 parton kinds of processes...
+    # pythia_process.readString("HardQCD:gg2ccbar = on")  # heavy quark kinds of processes...
 
     # Set a phase space cut for particle pT.
     '''
@@ -143,12 +169,22 @@ def scattering(pThatmin=config.jet.PTHATMIN, pThatmax=config.jet.PTHATMAX, do_sh
         ids = [record[max_0_i].id(), record[max_1_i].id()]
         ys = [record[max_0_i].y(), record[max_1_i].y()]
 
-        # Check if the results are The correct flavors and above 1 GeV
-        if ((np.abs(ids[0]) < 3.1) or (np.abs(ids[0]) == 21)) and ((np.abs(ids[1]) < 3.1) or (np.abs(ids[1]) == 21)):
-            if (max_0 > 1) and (max_1 > 1):
-                if np.abs(ys[0]) < y_res and np.abs(ys[1]) < y_res:
-                    if ((max_0 - max_1)/max_0 < soft_emission_cut):
-                        break  # Stop generating events, keep these particles
+        # Check if the results are The correct flavors, above pt cut, and in rapidity cut
+        if type == "dijet":
+            if ((np.abs(ids[0]) < 3.1) or (np.abs(ids[0]) == 21)) and ((np.abs(ids[1]) < 3.1) or (np.abs(ids[1]) == 21)):
+                if (max_0 > min_pt) and (max_1 > min_pt):
+                    if np.abs(ys[0]) < y_res and np.abs(ys[1]) < y_res:
+                        if ((max_0 - max_1)/max_0 < soft_emission_cut):
+                            break  # Stop generating events, keep these particles
+
+        if type == "gamma-jet":
+            if (((np.abs(ids[0]) < 3.1) or (np.abs(ids[0]) == 21) or (np.abs(ids[0]) == 22))
+                    and ((np.abs(ids[1]) < 3.1) or (np.abs(ids[1]) == 21) or (np.abs(ids[1]) == 22))):
+                if ids[0] == 22 or ids[1] == 22:  # At least one photon
+                    if (max_0 > min_pt) and (max_1 > min_pt):
+                        if np.abs(ys[0]) < y_res and np.abs(ys[1]) < y_res:
+                            if ((max_0 - max_1)/max_0 < soft_emission_cut):
+                                break  # Stop generating events, keep these particles
 
     ################################
     # Package and output particles #

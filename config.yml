@@ -41,6 +41,7 @@ jet:  # Parameters for the jet production processes to be run
     K_F_DRIFT: 1  # Scale factor for flow drift effect - default realistic estimate is 1
     K_FG_DRIFT: 1  # Scale factor for flow-gradient drift effects - default realistic estimate is 1
     PT_BIN: 1 # pT bin width in GeV for hard observables and histograms out
+    TYPE: "dijet"  # Type of hard processes to run -- "dijet" or "gamma-jet"
 global_constants:  # Physical constants to be set by the user.
     # Coupling is set by case selection in ebe scripts. Uses G_RAD by default.
     G_RAD: 2.1  # Coupling constant for IN-MEDIUM strong interaction w/ radiative energy loss -- if num GLV, need table!

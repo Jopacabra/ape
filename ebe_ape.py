@@ -177,7 +177,7 @@ def run_event(eventNo):
             #########################
             # Create new scattering #
             #########################
-            particles, weight = pythia.scattering()
+            particles, weight = pythia.scattering(type=config.jet.TYPE)
             particle_tags = np.random.default_rng().uniform(0, 1000000000000, len(particles)).astype(int)
             process_partons = pd.DataFrame({})
             process_hadrons = pd.DataFrame({})
@@ -213,7 +213,7 @@ def run_event(eventNo):
 
 
 
-                for case in [0, 1, 2, 3]:  # ['c1.6', 'c1.7', 'c1.8', '1.9', '2.0', '2.1']:  # [0, 1, 2, 3]
+                for case in [0, 1, 2, 3]:
                     case_partons = pd.DataFrame({})
                     # Determine case details
                     if case == 0:
@@ -284,6 +284,14 @@ def run_event(eventNo):
                                 chosen_pilot = 's'
                             elif particle_pid == -3:
                                 chosen_pilot = 'sbar'
+                            elif particle_pid == 22:
+                                chosen_pilot = 'gamma'
+                                i += 1
+                                continue  # Skip the photons -- noninteracting.
+                            else:
+                                i += 1
+                                continue  # We don't know how this should interact... skip it.
+
 
                             # Select jet seed particle angles
                             phi_0 = np.mod(part_phis[i] + phi_val, 2*np.pi)
@@ -357,15 +365,16 @@ def run_event(eventNo):
 
                         logging.info('Computing process-level observables')
                         # Compute acoplanarity
-                        angles = kf_partons['phi_f'].to_numpy()
-                        pts = kf_partons['pt_f'].to_numpy()
-                        had_pts = kf_partons['hadron_pt_f'].to_numpy()
-                        had_22_pts = kf_partons['hadron_22_pt_f'].to_numpy()
-                        aco = np.abs(np.abs(np.mod(angles[0] - angles[1] + np.pi, 2 * np.pi) - np.pi))
-                        kf_partons['partner_pt_f'] = np.flip(pts)
-                        kf_partons['partner_hadron_pt_f'] = np.flip(had_pts)
-                        kf_partons['partner_hadron_22_pt_f'] = np.flip(had_22_pts)
-                        kf_partons['aco'] = np.full(2, aco)
+                        if config.jet.TYPE == "dijet":
+                            angles = kf_partons['phi_f'].to_numpy()
+                            pts = kf_partons['pt_f'].to_numpy()
+                            had_pts = kf_partons['hadron_pt_f'].to_numpy()
+                            had_22_pts = kf_partons['hadron_22_pt_f'].to_numpy()
+                            aco = np.abs(np.abs(np.mod(angles[0] - angles[1] + np.pi, 2 * np.pi) - np.pi))
+                            kf_partons['partner_pt_f'] = np.flip(pts)
+                            kf_partons['partner_hadron_pt_f'] = np.flip(had_pts)
+                            kf_partons['partner_hadron_22_pt_f'] = np.flip(had_22_pts)
+                            kf_partons['aco'] = np.full(2, aco)
 
                         # Append to the case partons
                         case_partons = pd.concat([case_partons, kf_partons], axis=0)
