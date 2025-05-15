@@ -23,6 +23,9 @@ conda activate /usr/conda/ape
 
 # Install fragmentation functions
 lhapdf install "JAM20-SIDIS_FF_hadron_nlo"
+lhapdf install "NPC23_CHHAsum_nlo"
+lhapdf install "MAPFF10NNLOPIsum"
+lhapdf install "NNFF11_HadronSum_nlo"
 mv /usr/JAM22/JAM22-FF_hadron_nlo /usr/conda/ape/share/LHAPDF/
 
 # Debug print of working directory

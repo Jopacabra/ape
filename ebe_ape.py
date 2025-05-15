@@ -97,8 +97,8 @@ def safe_exit(resultsDataFrame, event_obs, temp_dir, filename, identifier, hadro
     logging.info('Downcasting numeric values to minimum memory size...')
     resultsDataFrame = downcast_numerics(resultsDataFrame)
 
-    logging.info('Writing pickles...')
-    resultsDataFrame.to_pickle(results_path + '/{}.pickle'.format(filename))  # Save dataframe to pickle
+    # logging.info('Writing pickles...')
+    # resultsDataFrame.to_pickle(results_path + '/{}.pickle'.format(filename))  # Save dataframe to pickle
 
     # Return to the directory in which we ran the script.
     os.chdir(home_path)
@@ -316,6 +316,12 @@ def run_event(eventNo):
                             pp_frag_z = hadronization.frag(parton, num=config.EBE.NUM_FRAGS)
                             pp_frag_z_22 = hadronization.frag(parton, num=config.EBE.NUM_FRAGS,
                                                               ff_name="JAM22-FF_hadron_nlo")
+                            pp_frag_z_MAP = hadronization.frag(parton, num=config.EBE.NUM_FRAGS,
+                                                              ff_name="MAPFF10NNLOPIsum")
+                            pp_frag_z_NNFF = hadronization.frag(parton, num=config.EBE.NUM_FRAGS,
+                                                              ff_name="NNFF11_HadronSum_nlo")
+                            pp_frag_z_NPC = hadronization.frag(parton, num=config.EBE.NUM_FRAGS,
+                                                              ff_name="NPC23_CHHAsum_nlo")
 
                             # Run the time loop
                             jet_dataframe, jet_xarray = timekeeper.evolve(event=event, parton=parton, drift=drift,
@@ -338,18 +344,50 @@ def run_event(eventNo):
                             frag_z = hadronization.frag(parton, num=config.EBE.NUM_FRAGS)
                             frag_z_22 = hadronization.frag(parton, num=config.EBE.NUM_FRAGS,
                                                            ff_name="JAM22-FF_hadron_nlo")
+                            frag_z_MAP = hadronization.frag(parton, num=config.EBE.NUM_FRAGS,
+                                                               ff_name="MAPFF10NNLOPIsum")
+                            frag_z_NNFF = hadronization.frag(parton, num=config.EBE.NUM_FRAGS,
+                                                                ff_name="NNFF11_HadronSum_nlo")
+                            frag_z_NPC = hadronization.frag(parton, num=config.EBE.NUM_FRAGS,
+                                                               ff_name="NPC23_CHHAsum_nlo")
+
+                            # Compute hadron momenta
                             hadron_pt = parton.p_T() * frag_z[0]
                             hadron_pt_0 = parton.p_T0 * pp_frag_z[0]
                             hadron_22_pt = parton.p_T() * frag_z_22[0]
                             hadron_22_pt_0 = parton.p_T0 * pp_frag_z_22[0]
+                            hadron_MAP_pt = parton.p_T() * frag_z_MAP[0]
+                            hadron_MAP_pt_0 = parton.p_T0 * pp_frag_z_MAP[0]
+                            hadron_NNFF_pt = parton.p_T() * frag_z_NNFF[0]
+                            hadron_NNFF_pt_0 = parton.p_T0 * pp_frag_z_NNFF[0]
+                            hadron_NPC_pt = parton.p_T() * frag_z_NPC[0]
+                            hadron_NPC_pt_0 = parton.p_T0 * pp_frag_z_NPC[0]
+
+                            # Save z values
                             current_parton['z'] = [frag_z]
                             current_parton['pp_z'] = [pp_frag_z]
                             current_parton['z_22'] = [frag_z_22]
                             current_parton['pp_z_22'] = [pp_frag_z_22]
+                            current_parton['z_MAP'] = [frag_z_MAP]
+                            current_parton['pp_z_MAP'] = [pp_frag_z_MAP]
+                            current_parton['z_NNFF'] = [frag_z_NNFF]
+                            current_parton['pp_z_NNFF'] = [pp_frag_z_NNFF]
+                            current_parton['z_NPC'] = [frag_z_NPC]
+                            current_parton['pp_z_NPC'] = [pp_frag_z_NPC]
+
+                            # Save momenta
                             current_parton['hadron_pt_f'] = hadron_pt
                             current_parton['hadron_pt_0'] = hadron_pt_0
                             current_parton['hadron_22_pt_f'] = hadron_22_pt
                             current_parton['hadron_22_pt_0'] = hadron_22_pt_0
+                            current_parton['hadron_MAP_pt_f'] = hadron_MAP_pt
+                            current_parton['hadron_MAP_pt_0'] = hadron_MAP_pt_0
+                            current_parton['hadron_NNFF_pt_f'] = hadron_NNFF_pt
+                            current_parton['hadron_NNFF_pt_0'] = hadron_NNFF_pt_0
+                            current_parton['hadron_NPC_pt_f'] = hadron_NPC_pt
+                            current_parton['hadron_NPC_pt_0'] = hadron_NPC_pt_0
+
+                            # Save tags
                             current_parton['process_run'] = process_run
 
                             # Save jet pair
@@ -433,7 +471,7 @@ def run_event(eventNo):
                                                             weight_series='weight', drift=drift_bool, cel=cel_bool,
                                                             NUM_PHI=157, K_F_DRIFT=KF_val)
 
-                # Make fragmentation xarrays for JAM20
+                # Make fragmentation xarrays for JAM22
                 xr_frag_hadrons_22_AA = utilities.xarray_ify_ff(event_partons, pt_series='pt_f', phi_series='phi_f',
                                                              z_series='z_22',
                                                              weight_series='AA_weight', drift=drift_bool, cel=cel_bool,
@@ -446,6 +484,54 @@ def run_event(eventNo):
                                                              z_series='pp_z_22',
                                                              weight_series='weight', drift=drift_bool, cel=cel_bool,
                                                              NUM_PHI=157, K_F_DRIFT=KF_val)
+
+                # Make fragmentation xarrays for MAP10
+                xr_frag_hadrons_MAP_AA = utilities.xarray_ify_ff(event_partons, pt_series='pt_f', phi_series='phi_f',
+                                                                z_series='z_MAP',
+                                                                weight_series='AA_weight', drift=drift_bool,
+                                                                cel=cel_bool,
+                                                                NUM_PHI=157, K_F_DRIFT=KF_val)
+                xr_frag_hadrons_MAP_pA = utilities.xarray_ify_ff(event_partons, pt_series='pt_0', phi_series='phi_0',
+                                                                z_series='pp_z_MAP',
+                                                                weight_series='AA_weight', drift=drift_bool,
+                                                                cel=cel_bool,
+                                                                NUM_PHI=157, K_F_DRIFT=KF_val)
+                xr_frag_hadrons_MAP_pp = utilities.xarray_ify_ff(event_partons, pt_series='pt_0', phi_series='phi_0',
+                                                                z_series='pp_z_MAP',
+                                                                weight_series='weight', drift=drift_bool, cel=cel_bool,
+                                                                NUM_PHI=157, K_F_DRIFT=KF_val)
+
+                # Make fragmentation xarrays for NNFF11
+                xr_frag_hadrons_NNFF_AA = utilities.xarray_ify_ff(event_partons, pt_series='pt_f', phi_series='phi_f',
+                                                                z_series='z_NNFF',
+                                                                weight_series='AA_weight', drift=drift_bool,
+                                                                cel=cel_bool,
+                                                                NUM_PHI=157, K_F_DRIFT=KF_val)
+                xr_frag_hadrons_NNFF_pA = utilities.xarray_ify_ff(event_partons, pt_series='pt_0', phi_series='phi_0',
+                                                                z_series='pp_z_NNFF',
+                                                                weight_series='AA_weight', drift=drift_bool,
+                                                                cel=cel_bool,
+                                                                NUM_PHI=157, K_F_DRIFT=KF_val)
+                xr_frag_hadrons_NNFF_pp = utilities.xarray_ify_ff(event_partons, pt_series='pt_0', phi_series='phi_0',
+                                                                z_series='pp_z_NNFF',
+                                                                weight_series='weight', drift=drift_bool, cel=cel_bool,
+                                                                NUM_PHI=157, K_F_DRIFT=KF_val)
+
+                # Make fragmentation xarrays for NPC23
+                xr_frag_hadrons_NPC_AA = utilities.xarray_ify_ff(event_partons, pt_series='pt_f', phi_series='phi_f',
+                                                                z_series='z_NPC',
+                                                                weight_series='AA_weight', drift=drift_bool,
+                                                                cel=cel_bool,
+                                                                NUM_PHI=157, K_F_DRIFT=KF_val)
+                xr_frag_hadrons_NPC_pA = utilities.xarray_ify_ff(event_partons, pt_series='pt_0', phi_series='phi_0',
+                                                                z_series='pp_z_NPC',
+                                                                weight_series='AA_weight', drift=drift_bool,
+                                                                cel=cel_bool,
+                                                                NUM_PHI=157, K_F_DRIFT=KF_val)
+                xr_frag_hadrons_NPC_pp = utilities.xarray_ify_ff(event_partons, pt_series='pt_0', phi_series='phi_0',
+                                                                z_series='pp_z_NPC',
+                                                                weight_series='weight', drift=drift_bool, cel=cel_bool,
+                                                                NUM_PHI=157, K_F_DRIFT=KF_val)
 
                 # Perform coalescence at T = 155 MeV
                 if KF_val == 1.0 or KF_val == 0.0:
@@ -471,29 +557,29 @@ def run_event(eventNo):
                     da.attrs['cel'] = cel_bool
                     da.attrs['K_F_Drift'] = KF_val
 
-                logging.info('Saving dataarrays...')
-                # Save xarray dataarrays for JAM20
-                xr_partons.to_netcdf(results_path + '/{}_AA_partons_drift{}_cel{}_KFD{}.nc'.format(
-                    identifierString, drift_bool, cel_bool, KF_val))
-                xr_frag_hadrons_AA.to_netcdf(results_path + '/{}_AA_JAM20_hadrons_drift{}_cel{}_KFD{}.nc'.format(
-                    identifierString, drift_bool, cel_bool, KF_val))
-                xr_frag_hadrons_pA.to_netcdf(results_path + '/{}_pA_JAM20_hadrons_drift{}_cel{}_KFD{}.nc'.format(
-                    identifierString, drift_bool, cel_bool, KF_val))
-                xr_frag_hadrons_pp.to_netcdf(results_path + '/{}_pp_JAM20_hadrons_drift{}_cel{}_KFD{}.nc'.format(
-                    identifierString, drift_bool, cel_bool, KF_val))
-
-                # Save xarray dataarrays for JAM22
-                xr_frag_hadrons_22_AA.to_netcdf(results_path + '/{}_AA_JAM22_hadrons_drift{}_cel{}_KFD{}.nc'.format(
-                    identifierString, drift_bool, cel_bool, KF_val))
-                xr_frag_hadrons_22_pA.to_netcdf(results_path + '/{}_pA_JAM22_hadrons_drift{}_cel{}_KFD{}.nc'.format(
-                    identifierString, drift_bool, cel_bool, KF_val))
-                xr_frag_hadrons_22_pp.to_netcdf(results_path + '/{}_pp_JAM22_hadrons_drift{}_cel{}_KFD{}.nc'.format(
-                    identifierString, drift_bool, cel_bool, KF_val))
-
-                # Save xarray dataarrays for coalescence
-                if KF_val == 1.0 or KF_val == 0.0:
-                    xr_coal_hadrons.to_netcdf(results_path + '/{}_AA_coal_hadrons_drift{}_cel{}_KFD{}.nc'.format(
-                        identifierString, drift_bool, cel_bool, KF_val))
+                # logging.info('Saving dataarrays...')
+                # # Save xarray dataarrays for JAM20
+                # xr_partons.to_netcdf(results_path + '/{}_AA_partons_drift{}_cel{}_KFD{}.nc'.format(
+                #     identifierString, drift_bool, cel_bool, KF_val))
+                # xr_frag_hadrons_AA.to_netcdf(results_path + '/{}_AA_JAM20_hadrons_drift{}_cel{}_KFD{}.nc'.format(
+                #     identifierString, drift_bool, cel_bool, KF_val))
+                # xr_frag_hadrons_pA.to_netcdf(results_path + '/{}_pA_JAM20_hadrons_drift{}_cel{}_KFD{}.nc'.format(
+                #     identifierString, drift_bool, cel_bool, KF_val))
+                # xr_frag_hadrons_pp.to_netcdf(results_path + '/{}_pp_JAM20_hadrons_drift{}_cel{}_KFD{}.nc'.format(
+                #     identifierString, drift_bool, cel_bool, KF_val))
+                #
+                # # Save xarray dataarrays for JAM22
+                # xr_frag_hadrons_22_AA.to_netcdf(results_path + '/{}_AA_JAM22_hadrons_drift{}_cel{}_KFD{}.nc'.format(
+                #     identifierString, drift_bool, cel_bool, KF_val))
+                # xr_frag_hadrons_22_pA.to_netcdf(results_path + '/{}_pA_JAM22_hadrons_drift{}_cel{}_KFD{}.nc'.format(
+                #     identifierString, drift_bool, cel_bool, KF_val))
+                # xr_frag_hadrons_22_pp.to_netcdf(results_path + '/{}_pp_JAM22_hadrons_drift{}_cel{}_KFD{}.nc'.format(
+                #     identifierString, drift_bool, cel_bool, KF_val))
+                #
+                # # Save xarray dataarrays for coalescence
+                # if KF_val == 1.0 or KF_val == 0.0:
+                #     xr_coal_hadrons.to_netcdf(results_path + '/{}_AA_coal_hadrons_drift{}_cel{}_KFD{}.nc'.format(
+                #         identifierString, drift_bool, cel_bool, KF_val))
 
                 logging.info('Computing and saving observables...')
                 # Compute partonic vns
@@ -514,6 +600,27 @@ def run_event(eventNo):
                 frag_22_raa = observables.compute_raa(xr_frag_hadrons_22_AA, xr_frag_hadrons_22_pp)
                 frag_22_obs = xr.merge([frag_22_vns, frag_22_raa])
                 frag_22_obs.to_netcdf(results_path + '/{}_AA_JAM22_hadrons_OBSERVABLES_drift{}_cel{}_KFD{}.nc'.format(
+                    identifierString, drift_bool, cel_bool, KF_val))
+
+                # Compute MAP vns and raa
+                frag_MAP_vns = observables.compute_vns(xr_frag_hadrons_MAP_AA, n_list=np.array([2, 3, 4]))
+                frag_MAP_raa = observables.compute_raa(xr_frag_hadrons_MAP_AA, xr_frag_hadrons_MAP_pp)
+                frag_MAP_obs = xr.merge([frag_MAP_vns, frag_MAP_raa])
+                frag_MAP_obs.to_netcdf(results_path + '/{}_AA_MAP10_hadrons_OBSERVABLES_drift{}_cel{}_KFD{}.nc'.format(
+                    identifierString, drift_bool, cel_bool, KF_val))
+
+                # Compute NNFF vns and raa
+                frag_NNFF_vns = observables.compute_vns(xr_frag_hadrons_NNFF_AA, n_list=np.array([2, 3, 4]))
+                frag_NNFF_raa = observables.compute_raa(xr_frag_hadrons_NNFF_AA, xr_frag_hadrons_NNFF_pp)
+                frag_NNFF_obs = xr.merge([frag_NNFF_vns, frag_NNFF_raa])
+                frag_NNFF_obs.to_netcdf(results_path + '/{}_AA_NNFF11_hadrons_OBSERVABLES_drift{}_cel{}_KFD{}.nc'.format(
+                    identifierString, drift_bool, cel_bool, KF_val))
+
+                # Compute NPC vns and raa
+                frag_NPC_vns = observables.compute_vns(xr_frag_hadrons_22_AA, n_list=np.array([2, 3, 4]))
+                frag_NPC_raa = observables.compute_raa(xr_frag_hadrons_22_AA, xr_frag_hadrons_22_pp)
+                frag_NPC_obs = xr.merge([frag_22_vns, frag_22_raa])
+                frag_NPC_obs.to_netcdf(results_path + '/{}_AA_NPC23_hadrons_OBSERVABLES_drift{}_cel{}_KFD{}.nc'.format(
                     identifierString, drift_bool, cel_bool, KF_val))
 
                 # Compute coalescence vns
