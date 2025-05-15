@@ -43,7 +43,7 @@ def frag(parton, num=1, ff_name="JAM20-SIDIS_FF_hadron_nlo"):
 
     # Sample a z value from the p(z) distribution
     z_val = np.array([])
-    for attempt in np.arange(0, 10):
+    while True:
         # Randomly generate many points
         batch = 10000
         z_guesses = rng.uniform(z_min, z_max, batch)
