@@ -538,11 +538,17 @@ def run_event(eventNo):
                     logging.info('Coalescing...')
                     xr_coal_hadrons = hadronization.coal_xarray(xr_partons, T=0.155, max_pt=20)
                     da_list = [xr_partons, xr_frag_hadrons_AA, xr_frag_hadrons_pA, xr_frag_hadrons_pp, xr_coal_hadrons,
-                               xr_frag_hadrons_22_AA, xr_frag_hadrons_22_pA, xr_frag_hadrons_22_pp]
+                               xr_frag_hadrons_22_AA, xr_frag_hadrons_22_pA, xr_frag_hadrons_22_pp,
+                               xr_frag_hadrons_MAP_AA, xr_frag_hadrons_MAP_pA, xr_frag_hadrons_MAP_pp,
+                               xr_frag_hadrons_NNFF_AA, xr_frag_hadrons_NNFF_pA, xr_frag_hadrons_NNFF_pp,
+                               xr_frag_hadrons_NPC_AA, xr_frag_hadrons_NPC_pA, xr_frag_hadrons_NPC_pp]
                 else:
                     xr_coal_hadrons = None
                     da_list = [xr_partons, xr_frag_hadrons_AA, xr_frag_hadrons_pA, xr_frag_hadrons_pp,
-                               xr_frag_hadrons_22_AA, xr_frag_hadrons_22_pA, xr_frag_hadrons_22_pp]
+                               xr_frag_hadrons_22_AA, xr_frag_hadrons_22_pA, xr_frag_hadrons_22_pp,
+                               xr_frag_hadrons_MAP_AA, xr_frag_hadrons_MAP_pA, xr_frag_hadrons_MAP_pp,
+                               xr_frag_hadrons_NNFF_AA, xr_frag_hadrons_NNFF_pA, xr_frag_hadrons_NNFF_pp,
+                               xr_frag_hadrons_NPC_AA, xr_frag_hadrons_NPC_pA, xr_frag_hadrons_NPC_pp]
 
                 # Assign event attributes
                 for da in da_list:
