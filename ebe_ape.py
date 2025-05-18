@@ -623,9 +623,9 @@ def run_event(eventNo):
                     identifierString, drift_bool, cel_bool, KF_val))
 
                 # Compute NPC vns and raa
-                frag_NPC_vns = observables.compute_vns(xr_frag_hadrons_22_AA, n_list=np.array([2, 3, 4]))
-                frag_NPC_raa = observables.compute_raa(xr_frag_hadrons_22_AA, xr_frag_hadrons_22_pp)
-                frag_NPC_obs = xr.merge([frag_22_vns, frag_22_raa])
+                frag_NPC_vns = observables.compute_vns(xr_frag_hadrons_NPC_AA, n_list=np.array([2, 3, 4]))
+                frag_NPC_raa = observables.compute_raa(xr_frag_hadrons_NPC_AA, xr_frag_hadrons_NPC_pp)
+                frag_NPC_obs = xr.merge([frag_NPC_vns, frag_NPC_raa])
                 frag_NPC_obs.to_netcdf(results_path + '/{}_AA_NPC23_hadrons_OBSERVABLES_drift{}_cel{}_KFD{}.nc'.format(
                     identifierString, drift_bool, cel_bool, KF_val))
 
