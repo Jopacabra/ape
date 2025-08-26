@@ -1,7 +1,17 @@
+# This CITATION.cff file was generated with cffinit.
+# Visit https://bit.ly/cffinit to generate yours today!
+
 cff-version: 1.2.0
-message: "If you use this software, please cite it as below."
+title: Anisotropic Parton Evolution
+message: >-
+  If you use this software, please cite it using the
+  metadata from this file.
+type: software
 authors:
-  - family-names: Bahder
-    given-names: Joseph
-    orcid: https://orcid.org/0000-0001-6347-3751
-title: "Anisotropic Partonic Evolution (APE)"
+  - given-names: Joseph
+    family-names: Bahder
+    email: joseph.bahder@gmail.com
+    orcid: 'https://orcid.org/0000-0001-6347-3751'
+repository-code: 'https://github.com/Jopacabra/ape'
+version: 1.1.0
+date-released: '2025-02-13'
