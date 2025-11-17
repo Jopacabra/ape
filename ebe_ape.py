@@ -565,10 +565,10 @@ try:
     with open(project_path + '/user_config.yml', 'r') as ymlfile:
         pass
     utilities.run_cmd(
-        *['cp', project_path + 'user_config.yml', results_path + '/user_config_{}.yml'.format(identifierString)],
+        *['cp', project_path + '/user_config.yml', results_path + '/user_config_{}.yml'.format(identifierString)],
         quiet=True)
 except:
-    utilities.run_cmd(*['cp', project_path + 'config.yml', results_path + '/config_{}.yml'.format(identifierString)],
+    utilities.run_cmd(*['cp', project_path + '/config.yml', results_path + '/config_{}.yml'.format(identifierString)],
                   quiet=True)
 
 # Run event loop
