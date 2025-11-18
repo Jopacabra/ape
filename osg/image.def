@@ -30,6 +30,8 @@ From: hub.opensciencegrid.org/htc/ubuntu:24.04
 
     # Create the conda environment
     PATH=$PATH:/opt/miniconda3/bin
+    conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main
+    conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r
     conda update -y conda
     conda config --add channels conda-forge
     conda create --yes --prefix /usr/conda/ape python=3.11.9 numpy scipy cython h5py pandas x>
@@ -37,7 +39,6 @@ From: hub.opensciencegrid.org/htc/ubuntu:24.04
     # Install ape & submodules
     cd /usr
     git clone --recursive https://github.com/Jopacabra/ape.git
-    chmod +x /usr/ape/install.sh
-    cd /usr/ape
+    chmod +x /usr/ape/osg/install.sh
     conda activate /usr/conda/ape
-    bash install.sh
+    bash /usr/ape/osg/install.sh
