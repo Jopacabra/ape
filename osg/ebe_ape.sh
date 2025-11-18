@@ -6,16 +6,6 @@ printf "Job running as user: "; /usr/bin/id
 printf "Job is running in directory: "; /bin/pwd  # Should be /srv by default
 echo
 
-# Export osu-hydro and trento binary location to path
-export PATH=/usr/bin:$PATH
-
-# Activate the conda environment
-echo "Activating conda environment..."
-conda init
-source ~/.bash_profile
-source ~/.bashrc
-conda activate /usr/conda/ape
-
 # Run the script
 echo "Running event..."
 python3 /usr/ape/ebe_ape.py

@@ -1,24 +1,43 @@
 Bootstrap: docker
-From: opensciencegrid/osgvo-el8
+From: hub.opensciencegrid.org/htc/ubuntu:24.04
 
 %runscript
 
-	# Run Command
-	exec "%@"
+        # Activate conda environment
+        PATH=$PATH:/opt/miniconda3/bin
+       	conda activate /usr/conda/ape
+
+       	# Export osu-hydro and trento binary location to path
+        export PATH=/usr/bin:$PATH
+
+        # Run command
+        exec "%@"
 
 %post
-    yum makecache --refresh && \
-    yum -y install cmake3 && \
-    yum -y install boost-devel && \
-    yum -y install hdf5-devel && \
-    yum -y install conda
-    conda init bash
+    # Update apt-get stuff
+    apt-get -y update
+
+    # Install dependencies
+    apt-get -y install build-essential libtool autoconf unzip wget
+    apt-get -y install cmake
+    apt-get -y install libboost-all-dev
+    apt-get -y install libhdf5-serial-dev
+
+    # Get Conda
+    cd /opt
+    wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
+    bash Miniconda3-latest-Linux-x86_64.sh -b -p /opt/miniconda3
+
+    # Create the conda environment
+    PATH=$PATH:/opt/miniconda3/bin
+    conda update -y conda
+    conda config --add channels conda-forge
+    conda create --yes --prefix /usr/conda/ape python=3.11.9 numpy scipy cython h5py pandas x>
+
+    # Install ape & submodules
     cd /usr
     git clone --recursive https://github.com/Jopacabra/ape.git
-    git clone -n --depth=1 --filter=tree:0 https://github.com/QCDHUB/JAM22.git
-    cd JAM22
-    git sparse-checkout set --no-cone /JAM22-FF_hadron_nlo
-    git checkout
     chmod +x /usr/ape/install.sh
     cd /usr/ape
+    conda activate /usr/conda/ape
     bash install.sh

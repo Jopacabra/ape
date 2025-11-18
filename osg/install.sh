@@ -1,31 +1,18 @@
 #!/bin/bash
-
-# go to project root (directory above this script)
-# https://stackoverflow.com/a/246128
-# cd "$(dirname "${BASH_SOURCE[0]}")"/..
-# ALREADY IN PROPER PATH
-
-# Create python virtual environment
-export pkgname='ape'
-export VIRTUAL_ENV=$pkgname
-
-# init and source scripts so that conda will work
-conda init
-source ~/.bash_profile
-source ~/.bashrc
-
-# create conda virtual environment with dependencies
-conda config --add channels conda-forge
-conda create --yes --prefix /usr/conda/ape python=3.11.9 numpy scipy cython h5py pandas xarray pyyaml fastparquet pythia8 lhapdf
-
-# Activate environment
-conda activate /usr/conda/ape
+# This file is meant to be run while building a container for deployment on the OSG.
 
 # Install fragmentation functions
 lhapdf install "JAM20-SIDIS_FF_hadron_nlo"
+cd /usr
+git clone -n --depth=1 --filter=tree:0 https://github.com/QCDHUB/JAM22.git
+cd JAM22
+git sparse-checkout set --no-cone /JAM22-FF_hadron_nlo
+git checkout
 mv /usr/JAM22/JAM22-FF_hadron_nlo /usr/conda/ape/share/LHAPDF/
 
-# Debug print of working directory
+# Go to the project root
+cd "$(dirname "${BASH_SOURCE[0]}")"
+cd ..
 pwd
 
 # Install hic - required for soft particle v2 analysis
