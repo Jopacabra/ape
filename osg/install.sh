@@ -56,7 +56,7 @@ mkdir build && cd build
 # This causes problems with many osg job sites.
 # We only call trento once, and it accounts for insignificant portion of compute time.
 # Better to be safe than save a few seconds.
-cmake3 -DCMAKE_INSTALL_PREFIX=/usr -DNATIVE=OFF -DCMAKE_INSTALL_RPATH_USE_LINK_PATH=True ..
+cmake -DCMAKE_INSTALL_PREFIX=/usr -DNATIVE=OFF -DCMAKE_INSTALL_RPATH_USE_LINK_PATH=True ..
 # Install the module
 make install
 cd ..
@@ -75,7 +75,7 @@ mkdir build && cd build
 # We install into /usr so we can access the binaries
 # We select to set native architecture optimization off.
 # This causes problems with many osg job sites.
-cmake3 -DCMAKE_INSTALL_PREFIX=/usr -DNATIVE=OFF ..
+cmake -DCMAKE_INSTALL_PREFIX=/usr -DNATIVE=OFF ..
 # Install the module
 make install
 cd ..
@@ -94,7 +94,7 @@ mkdir build && cd build
 # We install into /usr so we can access the binaries
 # We select to set native architecture optimization off.
 # This causes problems with many osg job sites.
-cmake3 -DCMAKE_INSTALL_PREFIX=/usr -DNATIVE=OFF ..
+cmake -DCMAKE_INSTALL_PREFIX=/usr -DNATIVE=OFF ..
 # Install the module
 make install
 cd ..
