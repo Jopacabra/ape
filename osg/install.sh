@@ -1,6 +1,10 @@
 #!/bin/bash
 # This file is meant to be run while building a container for deployment on the OSG.
 
+# Activate conda environment
+PATH=$PATH:/opt/miniconda3/bin
+conda activate /usr/conda/ape
+
 # Install fragmentation functions
 lhapdf install "JAM20-SIDIS_FF_hadron_nlo"
 cd /usr
