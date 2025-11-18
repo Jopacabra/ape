@@ -94,7 +94,7 @@ mkdir build && cd build
 # We install into /usr so we can access the binaries
 # We select to set native architecture optimization off.
 # This causes problems with many osg job sites.
-cmake -DCMAKE_INSTALL_PREFIX=/usr -DNATIVE=OFF ..
+cmake -DCMAKE_INSTALL_PREFIX=/usr -DNATIVE=OFF -DCMAKE_Fortran_FLAGS=-fallow-argument-mismatch ..
 # Install the module
 make install
 cd ..
