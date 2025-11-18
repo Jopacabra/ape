@@ -5,11 +5,12 @@
 # (e.g. "bash ubuntu_conda.sh", NOT "sudo bash ubuntu_conda.sh")
 
 # create conda virtual environment with dependencies
+export VIRTUAL_ENV='ape'
 conda config --add channels conda-forge
-conda create --yes --prefix ~/anaconda3/envs/ape python=3.11.9 numpy scipy cython h5py pandas xarray pyyaml fastparquet pythia8 lhapdf jupyter matplotlib
+conda create --yes --prefix ~/anaconda3/envs/$VIRTUAL_ENV python=3.11.9 numpy scipy cython h5py pandas xarray pyyaml fastparquet pythia8 lhapdf jupyter matplotlib
 
 # Activate conda environment
-source ~/anaconda3/bin/activate ~/anaconda3/envs/ape
+source ~/anaconda3/bin/activate ~/anaconda3/envs/$VIRTUAL_ENV
 
 # Go to home directory
 cd ~
@@ -20,5 +21,5 @@ git clone -n --depth=1 --filter=tree:0 https://github.com/QCDHUB/JAM22.git
 cd JAM22
 git sparse-checkout set --no-cone /JAM22-FF_hadron_nlo
 git checkout
-mv ~/JAM22/JAM22-FF_hadron_nlo ~/anaconda3/envs/ape/share/LHAPDF/
+mv ~/JAM22/JAM22-FF_hadron_nlo ~/anaconda3/envs/$VIRTUAL_ENV/share/LHAPDF/
 rm -rf ~/JAM22

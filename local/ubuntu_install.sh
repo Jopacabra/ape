@@ -1,6 +1,6 @@
 #!/bin/bash
 # You should have already installed the prerequisites, e.g. with ubuntu_prereqs.sh
-# You should have already made a conda environment called "ape", e.g. by running
+# You should have already made a conda environment called "ape" by default, e.g. by running
 # the ubuntu_conda.sh script.
 # Ensure that you activate your environment with e.g. conda activate ape
 
@@ -8,7 +8,8 @@
 SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 
 # Activate conda
-source ~/anaconda3/bin/activate ~/anaconda3/envs/ape
+export VIRTUAL_ENV='ape'
+source ~/anaconda3/bin/activate ~/anaconda3/envs/$VIRTUAL_ENV
 #conda activate ape
 
 # Debug print of working directory
@@ -21,26 +22,26 @@ pwd
 cd hic
 (
   [[ $PY_FLAGS ]] && export CFLAGS=$PY_FLAGS CXXFLAGS=$PY_FLAGS
-  pip install .
+  exec python3 setup.py install
 ) || exit 1
-cd ..
+cd $SCRIPT_DIR/..
 
 # Install freestream - required before installing osu-hydro
 # subshell allows temporary environment modification
 cd freestream
 (
   [[ $PY_FLAGS ]] && export CFLAGS=$PY_FLAGS CXXFLAGS=$PY_FLAGS
-  pip install .
+  exec python3 setup.py install
 ) || exit 1
-cd ..
+cd $SCRIPT_DIR/..
 
 # Install frzout - required before installing osu-hydro
 cd frzout
 (
   [[ $PY_FLAGS ]] && export CFLAGS=$PY_FLAGS CXXFLAGS=$PY_FLAGS
-  pip install .
+  exec python3 setup.py install
 ) || exit 1
-cd ..
+cd $SCRIPT_DIR/..
 
 # Build trento
 cd trento
@@ -57,11 +58,14 @@ mkdir build && cd build
 # This causes problems with many osg job sites.
 # We only call trento once, and it accounts for insignificant portion of compute time.
 # Better to be safe than save a few seconds.
-cmake -DCMAKE_INSTALL_PREFIX=~ -DNATIVE=OFF -DCMAKE_INSTALL_RPATH_USE_LINK_PATH=True ..
+cmake -DCMAKE_INSTALL_PREFIX=~/opt -DCMAKE_INSTALL_RPATH_USE_LINK_PATH=True ..
 # Install the module
 make install
-cd ..
-cd ..
+# Copy Trento binary to conda environment
+#cp src/trento ~/anaconda3/envs/$VIRTUAL_ENV/bin/trento
+# Leave
+cd $SCRIPT_DIR/..
+
 
 # Build osu-hydro
 cd osu-hydro
@@ -76,11 +80,17 @@ mkdir build && cd build
 # We install into /usr so we can access the binaries
 # We select to set native architecture optimization off.
 # This causes problems with many osg job sites.
-cmake -DCMAKE_INSTALL_PREFIX=~ -DNATIVE=OFF ..
+cmake -DCMAKE_INSTALL_PREFIX=~/opt ..
 # Install the module
 make install
-cd ..
-cd ..
+# Copy config
+cd ~/opt/share/
+cp --parents osu-hydro/osu-hydro.conf ~/.local/share/
+cp --parents osu-hydro/eos.dat ~/.local/share/
+#cp src/osu-hydro ~/anaconda3/envs/$VIRTUAL_ENV/bin/osu-hydro
+#cp ../osu-hydro ~/anaconda3/envs/$VIRTUAL_ENV/share/osu-hydro.config
+# Leave
+cd $SCRIPT_DIR/..
 
 # Build UrQMD
 cd urqmd-afterburner
@@ -95,8 +105,11 @@ mkdir build && cd build
 # We install into /usr so we can access the binaries
 # We select to set native architecture optimization off.
 # This causes problems with many osg job sites.
-cmake -DCMAKE_INSTALL_PREFIX=~ -DNATIVE=OFF -DCMAKE_Fortran_FLAGS=-fallow-argument-mismatch=True ..
+cmake -DCMAKE_INSTALL_PREFIX=~/opt -DCMAKE_Fortran_FLAGS=-fallow-argument-mismatch ..
 # Install the module
 make install
-cd ..
-cd ..
+cd $SCRIPT_DIR/..
+# Copy binaries
+#cp ~/bin/afterburner ~/anaconda3/envs/$VIRTUAL_ENV/bin/afterburner
+#cp ~/bin/osc2u ~/anaconda3/envs/$VIRTUAL_ENV/bin/osc2u
+#cp ~/bin/urqmd ~/anaconda3/envs/$VIRTUAL_ENV/bin/urqmd
