@@ -1,5 +1,5 @@
 # We want to use the custom container image
-+SingularityImage = "osdf:///ospool/ap21/data/jopacabra/ape_v1.0.0.sif"
++SingularityImage = "osdf:///ospool/ap21/data/jopacabra/ape_v1.3.1.sif"
 # Requirements omit one resource location and require hardware to match newness of
 # hardware where we compiled osu-hydro and trento (on the login node)
 Requirements = HAS_AVX == True && GLIDEIN_ResourceName =!= "UW-IT"

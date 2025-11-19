@@ -4,10 +4,11 @@ From: hub.opensciencegrid.org/htc/ubuntu:24.04
 %runscript
 
         # Activate conda environment
-        PATH=$PATH:/opt/miniconda3/bin
-       	conda activate /usr/conda/ape
+        . /opt/miniconda3/etc/profile.d/conda.sh
+        PATH=$PATH:/miniconda3/bin
+        conda activate /usr/conda/ape
 
-       	# Export osu-hydro and trento binary location to path
+        # Export osu-hydro and trento binary location to path
         export PATH=/usr/bin:$PATH
 
         # Run command
@@ -27,6 +28,7 @@ From: hub.opensciencegrid.org/htc/ubuntu:24.04
     cd /opt
     wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
     bash Miniconda3-latest-Linux-x86_64.sh -b -p /opt/miniconda3
+    rm Miniconda3-latest-Linux-x86_64.sh
 
     # Create the conda environment
     PATH=$PATH:/opt/miniconda3/bin
@@ -34,11 +36,14 @@ From: hub.opensciencegrid.org/htc/ubuntu:24.04
     conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r
     conda update -y conda
     conda config --add channels conda-forge
-    conda create --yes --prefix /usr/conda/ape python=3.11.9 numpy scipy cython h5py pandas x>
+    conda create --yes --prefix /usr/conda/ape python=3.11.9 numpy scipy cython h5py pandas xarray pyyaml fastparquet pythia8 lhapdf
+    conda init
 
     # Install ape & submodules
     cd /usr
     git clone --recursive https://github.com/Jopacabra/ape.git
     chmod +x /usr/ape/osg/install.sh
+    . /opt/miniconda3/etc/profile.d/conda.sh
+    PATH=$PATH:/opt/miniconda3/bin
     conda activate /usr/conda/ape
     bash /usr/ape/osg/install.sh
