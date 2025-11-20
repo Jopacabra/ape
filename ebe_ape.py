@@ -1,4 +1,5 @@
 import os
+import sys
 import numpy as np
 import pandas as pd
 import xarray as xr
@@ -555,7 +556,7 @@ logging.basicConfig(
     level=logging.DEBUG,
     handlers=[
         logging.FileHandler(results_path + '/log_{}.log'.format(identifierString)),
-        logging.StreamHandler()
+        logging.StreamHandler(sys.stderr)
     ]
 )
 
