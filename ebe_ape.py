@@ -551,14 +551,29 @@ results_path = home_path + '/results/{}'.format(identifierString)  # Absolute pa
 # Make results directory
 os.makedirs(results_path, exist_ok=True)
 
-# Create log file & configure logging to be handled into the file AND stdout
+# Force unbuffered output
+sys.stdout.flush()
+sys.stderr.flush()
+
+# Check if os can write to the logging directory
+if not os.access(results_path, os.W_OK):
+    print(f"Cannot write to {results_path}")
+    logging.error(f"Cannot write to {results_path}")
+    # Set maximally loose permissions
+    os.chmod(results_path, 0o777)  # Set directory permissions to 777
+
+# Create log file & configure logging to be handled into the file AND stderr
 logging.basicConfig(
     level=logging.DEBUG,
     handlers=[
-        logging.FileHandler(results_path + '/log_{}.log'.format(identifierString)),
-        logging.StreamHandler(sys.stderr)
+        logging.StreamHandler(sys.stderr),
+        logging.FileHandler(results_path + '/log_{}.log'.format(identifierString))
     ]
 )
+
+# Add environment info to logs
+logging.info(f"Job running in: {home_path}")
+logging.info(f"Python version: {sys.version}")
 
 # Copy config file to results directory, tagged with identifier
 logging.info('Copying config.yml to results...')
@@ -633,3 +648,7 @@ except BaseException as error:
 logging.info('Results identifier: {}'.format(identifierString))
 logging.info('Successful clean exit!')
 logging.info('Please have an excellent day. :)')
+
+# At the end of the script, ensure all logs are flushed
+for handler in logging.root.handlers:
+    handler.flush()
