@@ -567,7 +567,7 @@ logging.basicConfig(
     level=logging.DEBUG,
     handlers=[
         logging.StreamHandler(sys.stderr),
-        logging.FileHandler(results_path + '/log_{}.log'.format(identifierString))
+        logging.FileHandler('log_{}.log'.format(identifierString))
     ]
 )
 
