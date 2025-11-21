@@ -626,8 +626,12 @@ except collision.StopEvent as error:
     logging.info('Cleaning up...')
 
     # Clean up and get everything sorted
-    safe_exit(resultsDataFrame=results, hadrons_df=hadrons, temp_dir=temp_dir, filename=resultsFilename, identifier=identifierString,
-              keep_event=config.mode.KEEP_EVENT, event_obs=event_observables)
+    try:
+        safe_exit(resultsDataFrame=results, hadrons_df=hadrons, temp_dir=temp_dir, filename=resultsFilename, identifier=identifierString,
+                  keep_event=config.mode.KEEP_EVENT, event_obs=event_observables)
+    except:
+        logging.info('Failed to save any new data.')
+        pass
 
 except MemoryError as error:
     logging.exception('Memory error: {}'.format(str(error)))
