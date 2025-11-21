@@ -4,6 +4,72 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 import logging
+import traceback
+import argparse
+
+#########
+# Setup #
+#########
+
+# Define command line arguments
+parser = argparse.ArgumentParser()
+parser.add_argument("-e", "--eventtype", help="Type of initial conditions to use")
+
+# Get command line arguments
+args = parser.parse_args()
+event_type = str(args.eventtype)  # Type of initial conditions to use
+
+# Instantiate counters
+part = 0
+eventNo = 0
+
+# Set up results frame and filename.
+temp_dir = None  # Instantiates object for interrupt before temp_dir created.
+results = pd.DataFrame({})
+hadrons = pd.DataFrame({})
+identifierString = str(int(np.random.uniform(0, 9999999999999)))
+resultsFilename = 'results' + identifierString + 'p' + str(part)
+
+# Set running location as current directory - whatever the pwd was when running the script
+project_path = os.path.dirname(os.path.realpath(__file__))  # Gets directory the EBE.py script is located in
+home_path = os.getcwd()  # Gets working directory when script was run - results directory will be placed here
+results_path = home_path + '/results/{}'.format(identifierString)  # Absolute path of dir where results files will live
+
+# Make results directory
+os.makedirs(results_path, exist_ok=True)
+
+# Force unbuffered output
+sys.stdout.flush()
+sys.stderr.flush()
+
+# Check if os can write to the logging directory
+if not os.access(results_path, os.W_OK):
+    print(f"Cannot write to {results_path}")
+    logging.error(f"Cannot write to {results_path}")
+    # Set maximally loose permissions
+    os.chmod(results_path, 0o777)  # Set directory permissions to 777
+
+# Clear any existing logging handlers
+for handler in logging.root.handlers[:]:
+    logging.root.removeHandler(handler)
+
+# Create log file & configure logging to be handled into the file AND stderr
+logging.basicConfig(
+    level=logging.DEBUG,
+    handlers=[
+        logging.StreamHandler(sys.stderr),
+        logging.FileHandler('log_{}.log'.format(identifierString))
+    ],
+    force=True
+)
+
+# Add environment info to logs
+logging.info(f"Job running in: {home_path}")
+logging.info(f"Python version: {sys.version}")
+
+# Load APE modules
+# Note we do this after setting up the log files in order to allow diagnostic log messages
+# and to avoid problems with logging instances doing strange things.
 import collision
 import plasma
 import jets
@@ -14,16 +80,11 @@ import timekeeper
 import pythia
 import hadronization
 import observables
-import traceback
-import argparse
 
-# Define command line arguments
-parser = argparse.ArgumentParser()
-parser.add_argument("-e", "--eventtype", help="Type of initial conditions to use")
 
-# Get command line arguments
-args = parser.parse_args()
-event_type = str(args.eventtype)  # Type of initial conditions to use
+###############
+# Definitions #
+###############
 
 # Function to downcast datatypes to minimum memory size for each column
 def downcast_numerics(df, verbose=True):
@@ -531,49 +592,6 @@ def run_event(eventNo):
 ################
 # Main Program #
 ################
-
-# Instantiate counters
-part = 0
-eventNo = 0
-
-# Set up results frame and filename.
-temp_dir = None  # Instantiates object for interrupt before temp_dir created.
-results = pd.DataFrame({})
-hadrons = pd.DataFrame({})
-identifierString = str(int(np.random.uniform(0, 9999999999999)))
-resultsFilename = 'results' + identifierString + 'p' + str(part)
-
-# Set running location as current directory - whatever the pwd was when running the script
-project_path = os.path.dirname(os.path.realpath(__file__))  # Gets directory the EBE.py script is located in
-home_path = os.getcwd()  # Gets working directory when script was run - results directory will be placed here
-results_path = home_path + '/results/{}'.format(identifierString)  # Absolute path of dir where results files will live
-
-# Make results directory
-os.makedirs(results_path, exist_ok=True)
-
-# Force unbuffered output
-sys.stdout.flush()
-sys.stderr.flush()
-
-# Check if os can write to the logging directory
-if not os.access(results_path, os.W_OK):
-    print(f"Cannot write to {results_path}")
-    logging.error(f"Cannot write to {results_path}")
-    # Set maximally loose permissions
-    os.chmod(results_path, 0o777)  # Set directory permissions to 777
-
-# Create log file & configure logging to be handled into the file AND stderr
-logging.basicConfig(
-    level=logging.DEBUG,
-    handlers=[
-        logging.StreamHandler(sys.stderr),
-        logging.FileHandler('log_{}.log'.format(identifierString))
-    ]
-)
-
-# Add environment info to logs
-logging.info(f"Job running in: {home_path}")
-logging.info(f"Python version: {sys.version}")
 
 # Copy config file to results directory, tagged with identifier
 logging.info('Copying config.yml to results...')
