@@ -40,7 +40,7 @@ APE was built specifically for deployment on the Open Science Grid (OSG) via con
 1. Build the container with apptainer:
     e.g.: apptainer build container.sif image.def
 2. Update the submission script with the location of the container image on the OSPool.
-3. Submit submission script
+3. Submit script. Make sure to edit config.yml, rename to user_config.yml, and pass as input file with submission script. No default configuration is provided.
 4. Collect result "*.pickle" files containing parton results
 
 ### Data & Analysis

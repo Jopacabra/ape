@@ -8,13 +8,15 @@ import logging
 # Get location of config.py and config.yml
 project_path = os.path.dirname(os.path.realpath(__file__))
 
+class StopConfiguring(Exception):
+    """ Raise to stop configuring """
+
 # Read config file and parse settings
 try:
     with open('/srv/scratch/user_config.yml', 'r') as ymlfile:  # New location where htcondor will put input files
         logging.info('Using user edited config file')
         # Note the usage of yaml.safe_load()
         # Using yaml.load() exposes the system to running any Python commands in the config file.
-        # That is unnecessary risk!!!
         cfg = yaml.safe_load(ymlfile)
 except:
     try:
@@ -22,15 +24,12 @@ except:
             logging.info('Using user edited config file')
             # Note the usage of yaml.safe_load()
             # Using yaml.load() exposes the system to running any Python commands in the config file.
-            # That is unnecessary risk!!!
             cfg = yaml.safe_load(ymlfile)
     except:
-        with open(project_path + '/config.yml', 'r') as ymlfile:
-            logging.info('Using default config file')
-            # Note the usage of yaml.safe_load()
-            # Using yaml.load() exposes the system to running any Python commands in the config file.
-            # That is unnecessary risk!!!
-            cfg = yaml.safe_load(ymlfile)
+        logging.error("No config file. Please provide user_config.yml.")
+        print("No config file. Please provide user_config.yml.")
+
+        raise StopConfiguring("No config file. Please provide user_config.yml. Ending run...")
 
 
 # Event by event sampling configuration
