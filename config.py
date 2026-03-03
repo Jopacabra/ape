@@ -88,7 +88,7 @@ class jet:
     TAU_PROD = bool(cfg['jet']['TAU_PROD'])
     PTHATMIN = float(cfg['jet']['PTHATMIN'])
     PTHATMAX = float(cfg['jet']['PTHATMAX'])
-    PROCESS_CORRECTIONS = bool(cfg['jet']['PROCESS_CORRECTIONS'])
+    SHOWER = bool(cfg['jet']['SHOWER'])
     DTAU = float(cfg['jet']['DTAU'])
     T_HRG = float(cfg['jet']['T_HRG'])
     T_UNHYDRO = float(cfg['jet']['T_UNHYDRO'])
@@ -97,6 +97,7 @@ class jet:
     K_BBMG = 1  #float(cfg['jet']['K_BBMG'])
     PT_BIN = float(cfg['jet']['PT_BIN'])
     TYPE = str(cfg['jet']['TYPE'])
+    RAP_MAX = float(cfg['jet']['RAP_MAX'])
 
 
 # Global constants

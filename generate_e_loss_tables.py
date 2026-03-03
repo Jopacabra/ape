@@ -42,7 +42,7 @@ for parton in ['q', 'g']:
                 CR = 3
 
             mu = pi.mu_DeBye(T=T, g=coupling)  # in GeV
-            lamb = 1 / pi.inv_lambda(T=T, parton_type=parton)  # in GeV
+            lamb = 1 / pi.inv_lambda(T=T, hard_pid=parton)  # in GeV
             FmGeV = 1 / 0.19732687
 
             # # Define the analytic dI_dx we're targeting

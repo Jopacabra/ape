@@ -1,16 +1,20 @@
+import logging
+
 import pythia8
 import numpy as np
-import pandas as pd
-import config
+import matplotlib.pyplot as plt
 
-# Function to generate a pp hard scattering at sqrt(s) = 5.02 TeV
-def scattering(pThatmin=config.jet.PTHATMIN, pThatmax=config.jet.PTHATMAX, do_shower=config.jet.PROCESS_CORRECTIONS,
-               type="dijet", min_pt=1):
+import config
+import hard_particles
+
+# Function to generate a pp hard scattering
+def scattering(pThatmin=config.jet.PTHATMIN, pThatmax=config.jet.PTHATMAX, do_shower=config.jet.SHOWER,
+               type="dijet", min_pt=1, get_all=True, tau=config.transport.hydro.TAU_FS, x=0, y=0, etas=0,
+               y_res = config.jet.RAP_MAX):
     ############
     # Settings #
     ############
-    y_res = 0.5
-    soft_emission_cut = 0.1  # If do_shower, veto anything with fractional dijet pt difference > soft_emission_cut
+    soft_emission_cut = 0.1  # For parton pairs, veto anything with fractional diparton pt difference > soft_emission_cut
 
     # Generate scattering id
     scattering_id = int(np.random.uniform(0, 1000000000000))
@@ -57,6 +61,9 @@ def scattering(pThatmin=config.jet.PTHATMIN, pThatmax=config.jet.PTHATMAX, do_sh
     # Set up Pythia #
     #################
     pythia_process = pythia8.Pythia("", False)  # Print header = False
+    pythia_process.readString("Print:quiet = on")  # Don't print anything but the basics
+    pythia_process.readString("Print:init = off")  # Don't print all of the initialization business.
+    pythia_process.readString("Print:next = off")  # Don't print all of the event business when we run a new event.
 
     # Use seed based on time
     pythia_process.readString("Random:setSeed = on")
@@ -73,24 +80,31 @@ def scattering(pThatmin=config.jet.PTHATMIN, pThatmax=config.jet.PTHATMAX, do_sh
     pythia_process.readString("ProcessLevel:all = on")
 
     # # Choose what mode for the results
-    # if do_shower:
-    #     # Enable parton-level interactions -- things will happen after the hard scattering.
-    #     pythia_process.readString("PartonLevel:all = on")
-    #
-    #     # Turn off multi-parton interactions
-    #     pythia_process.readString("PartonLevel:MPI = off")
-    #
-    #     # Turn off "Initial state" radiation with spacelike particles "before the hard process"
-    #     pythia_process.readString("PartonLevel:ISR = off")
-    #     # pythia_process.readString("PartonLevel:MPI = {}".format(do_shower))  # Multi-parton interactions
-    #     # pythia_process.readString("PartonLevel:ISR = {}".format(
-    #     #     do_shower))  # "Initial state" radiation with spacelike particles "before the hard process"
-    #     pythia_process.readString("PartonLevel:FSR = off")  # "Final state" radiation with timelike particles
-    #     pythia_process.readString("PartonLevel:Remnants = off")  # Turn off beam remnant adding
-    #     pythia_process.readString("Check:event = off") # Turn off event checks -- Missing beam remnants!
-    # else:
-    #     pythia_process.readString("PartonLevel:all = off")
-    pythia_process.readString("PartonLevel:all = off")  # No showering business implemented yet.
+    if do_shower:
+        # Enable parton-level interactions -- things will happen after the hard scattering.
+        pythia_process.readString("PartonLevel:all = on")
+
+        # We want the two hardest scattering outputs
+        if not get_all:
+            # Turn off multi-parton interactions
+            pythia_process.readString("PartonLevel:MPI = off")
+
+            # Turn off "Initial state" radiation with spacelike particles "before the hard process"
+            pythia_process.readString("PartonLevel:ISR = off")
+
+            # Turn off "Final state" radiation with timelike particles
+            pythia_process.readString("PartonLevel:FSR = off")
+
+            # Turn off beam remnants
+            pythia_process.readString("PartonLevel:Remnants = off")  # Turn off beam remnant adding
+            pythia_process.readString("Check:event = off") # Turn off event checks -- Missing beam remnants!
+
+        # We want full jets, including beam remnants and such
+        else:
+            # Keep all of that!
+            pass
+    else:
+        pythia_process.readString("PartonLevel:all = off")
 
     # Only parton-level results, no hadronization
     pythia_process.readString("HadronLevel:all = off")
@@ -104,6 +118,14 @@ def scattering(pThatmin=config.jet.PTHATMIN, pThatmax=config.jet.PTHATMAX, do_sh
         pythia_process.readString("HardQCD:qq2qq = on")
         pythia_process.readString("HardQCD:qqbar2gg = on")
         pythia_process.readString("HardQCD:qqbar2qqbarNew = on")
+
+        # Turn off heavy-flavor
+        pythia_process.readString("HardQCD:gg2ccbar = off")
+        pythia_process.readString("HardQCD:qqbar2ccbar = off")
+        pythia_process.readString("HardQCD:hardccbar = off")
+        pythia_process.readString("HardQCD:gg2bbbar = off")
+        pythia_process.readString("HardQCD:qqbar2bbbar = off")
+        pythia_process.readString("HardQCD:hardbbbar = off")
 
     elif type == "gamma-jet":
         pythia_process.readString("PromptPhoton:qg2qgamma = on")
@@ -123,9 +145,9 @@ def scattering(pThatmin=config.jet.PTHATMIN, pThatmax=config.jet.PTHATMAX, do_sh
     pythia_process.readString("PhaseSpace:pTHatMin = {}".format(pThatmin))  # Phase space cuts are on hard process pTHat
     pythia_process.readString("PhaseSpace:pTHatMax = {}".format(pThatmax))
 
-    # Here we bias the selection of pTHat for the process by a given power of pTHat (Here pTHat^4)
+    # Here we bias the selection of pTHat for the process by a given power of pTHat (Here pTHat^4).
     # This is more or less equivalent to sampling from a uniform distribution in pTHat
-    # and recording an appropriate true pTHat-dependent weight from a known weight distribution
+    # and recording an appropriate true pTHat-dependent weight from a known weight distribution.
     pythia_process.readString("PhaseSpace:bias2Selection = on")
     pythia_process.readString("PhaseSpace:bias2SelectionPow = 4")
 
@@ -137,16 +159,15 @@ def scattering(pThatmin=config.jet.PTHATMIN, pThatmax=config.jet.PTHATMAX, do_sh
     pythia_process.init()
 
     # Event loop. Iterate until getting a satisfactory hard process.
-    for iEvent in range(1000):
+    success = False
+    iEvent = -1
+    while not success:
+        iEvent += 1
         # Run the next event
         if not pythia_process.next(): continue
-        nCharged = 0
-        max_0 = 0
-        max_0_i = 0
-        max_1 = 0
-        max_1_i = 0
+        nParticles = 0
 
-        # Check if we're using the event record or the process record
+        # Set if we're using the event record or the process record
         if pythia_process.event.size() == 0:
             num_particles_hist = pythia_process.process.size()
             record = pythia_process.process
@@ -154,354 +175,101 @@ def scattering(pThatmin=config.jet.PTHATMIN, pThatmax=config.jet.PTHATMAX, do_sh
             num_particles_hist = pythia_process.event.size()
             record = pythia_process.event
 
-        # Iterate over all particles and look for the hardest partonic outputs.
+        # Confirm that our event only has particles we can handle
+        allowed_partons = list(hard_particles._PARTICLE_SPECIES.keys())
         for i in np.arange(0, num_particles_hist):
             p = record[i]
             if (p.status() > 0):  # and p.isHadron() and p.isCharged():
-                nCharged += 1
-                if p.pT() > max_1:
-                    if p.pT() > max_0:
-                        max_0_i = i
-                        max_0 = p.pT()
-                    else:
-                        max_1_i = i
-                        max_1 = p.pT()
-        ids = [record[max_0_i].id(), record[max_1_i].id()]
-        ys = [record[max_0_i].y(), record[max_1_i].y()]
+                current_pid = p.id()
+                if current_pid not in allowed_partons:
+                    logging.debug("Disallowed particle: {}, Skipping event:{}".format(current_pid,
+                                                                                         iEvent))
+                    continue
 
-        # Check if the results are The correct flavors, above pt cut, and in rapidity cut
-        if type == "dijet":
-            if ((np.abs(ids[0]) < 3.1) or (np.abs(ids[0]) == 21)) and ((np.abs(ids[1]) < 3.1) or (np.abs(ids[1]) == 21)):
-                if (max_0 > min_pt) and (max_1 > min_pt):
-                    if np.abs(ys[0]) < y_res and np.abs(ys[1]) < y_res:
-                        if ((max_0 - max_1)/max_0 < soft_emission_cut):
-                            break  # Stop generating events, keep these particles
+        particle_list = []
+        if get_all:
+            # Collect all of the particles that exist in the final partonic state
+            for i in np.arange(0, num_particles_hist):
+                p = record[i]
+                if (p.status() > 0):  # and p.isHadron() and p.isCharged():
+                    nParticles += 1
+                    particle_list = np.append(particle_list, p)
+            success = True
+            break
+        else:
+            # Iterate over all particles and look for the hardest partonic outputs.
+            max_0 = 0
+            max_0_i = 0
+            max_1 = 0
+            max_1_i = 0
+            for i in np.arange(0, num_particles_hist):
+                p = record[i]
+                if (p.status() > 0):  # and p.isHadron() and p.isCharged():
+                    nParticles += 1
+                    if p.pT() > max_1:
+                        if p.pT() > max_0:
+                            max_0_i = i
+                            max_0 = p.pT()
+                        else:
+                            max_1_i = i
+                            max_1 = p.pT()
+            ids = [record[max_0_i].id(), record[max_1_i].id()]
+            ys = [record[max_0_i].y(), record[max_1_i].y()]
+            particle_list = [record[max_0_i], record[max_1_i]]
 
-        if type == "gamma-jet":
-            if (((np.abs(ids[0]) < 3.1) or (np.abs(ids[0]) == 21) or (np.abs(ids[0]) == 22))
-                    and ((np.abs(ids[1]) < 3.1) or (np.abs(ids[1]) == 21) or (np.abs(ids[1]) == 22))):
-                if ids[0] == 22 or ids[1] == 22:  # At least one photon
+            # Check if the results are The correct flavors, above pt cut, and in rapidity cut
+            if type == "dijet":
+                if ((np.abs(ids[0]) < 3.1) or (np.abs(ids[0]) == 21)) and ((np.abs(ids[1]) < 3.1) or (np.abs(ids[1]) == 21)):
                     if (max_0 > min_pt) and (max_1 > min_pt):
                         if np.abs(ys[0]) < y_res and np.abs(ys[1]) < y_res:
                             if ((max_0 - max_1)/max_0 < soft_emission_cut):
+                                success = True
                                 break  # Stop generating events, keep these particles
+
+            if type == "gamma-jet":
+                if (((np.abs(ids[0]) < 3.1) or (np.abs(ids[0]) == 21) or (np.abs(ids[0]) == 22))
+                        and ((np.abs(ids[1]) < 3.1) or (np.abs(ids[1]) == 21) or (np.abs(ids[1]) == 22))):
+                    if ids[0] == 22 or ids[1] == 22:  # At least one photon
+                        if (max_0 > min_pt) and (max_1 > min_pt):
+                            if np.abs(ys[0]) < y_res and np.abs(ys[1]) < y_res:
+                                if ((max_0 - max_1)/max_0 < soft_emission_cut):
+                                    success = True
+                                    break  # Stop generating events, keep these particles
 
     ################################
     # Package and output particles #
     ################################
+    logging.info("Event selection success: {}".format(success))
+    # pythia_process.event.list()  # List the event that we accepted
     weight = pythia_process.infoPython().weight()
-    particles = pd.DataFrame({})
+    output_particles = []
 
-    for particle in [record[max_0_i], record[max_1_i]]:
-        properties = pd.DataFrame(
-            {
-                'id': [int(particle.id())],
-                'status': [int(particle.status())],
-                'mother1': [int(particle.mother1())],
-                'mother2': [int(particle.mother2())],
-                'daughter1': [int(particle.daughter1())],
-                'daughter2': [int(particle.daughter2())],
-                'col': [int(particle.col())],
-                'acol': [int(particle.acol())],
-                'px': [particle.px()],
-                'py': [particle.py()],
-                'pz': [particle.pz()],
-                'pt': [particle.pT()],
-                'y': [particle.y()],
-                'e': [particle.e()],
-                'm': [particle.m()],
-                'scaleIn': [particle.scale()]
-            }
-        )
+    # Shut down if we failed to produce any particles
+    if len(particle_list) == 0:
+        raise Exception("No particles found in event!")
 
-        particles = pd.concat([particles, properties], axis=0)
+    # Create a list of ape hard_particles.Particle objects
+    for particle in particle_list:
+        ape_particle = hard_particles.Particle.from_pythia(particle, tau=tau, x=x, y=y, etas=etas)
+        output_particles.append(ape_particle)
+
+    # Make an ape hard_particles.EventRecord object
+    ape_event = hard_particles.EventRecord(particles=output_particles, weight=weight)
+
+    return ape_event
+
+
+# Function to take a list of particles and rotate the entire group by a random angle phi.
+def phi_sample_embed(particles, weight):
+    # Rotate the entire group by a random angle phi
 
     return particles, weight
 
 
-# Function to hadronize a pair of particles
-def string_hadronize(jet1, jet2, scaleIn=2, weight=1):
-    # Settings
-    y_res = 1
-    max_had_runs = 10000
-
-    #########################
-    # Assign colors to jets #
-    #########################
-
-    # Get particle ids
-    id1 = jet1.id
-    id2 = jet2.id
-
-    remnant = False
-    remnant2 = False
-    # Choose colors so as to get a color singlet
-    # Add a third particle as a beam remnant to get a color singlet, if necessary
-    if id1 == 21 and id2 == 21:
-        # A pair of gluons
-        # Particles just get opposite colors and anticolors
-        col1 = 101
-        acol1 = 102
-        col2 = 102
-        acol2 = 101
-    elif (3.1 > id1 > 0) and (-3.1 < id2 < 0):
-        # Quark antiquark pair
-        col1 = 101
-        acol1 = 0
-        col2 = 0
-        acol2 = 101
-    elif (-3.1 < id1 < 0) and (3.1 > id2 > 0):
-        # Antiquark quark pair
-        col1 = 0
-        acol1 = 101
-        col2 = 101
-        acol2 = 0
-    elif (-3.1 < id1 < 0) and id2 == 21:
-        # antiquark gluon pair
-        remnant = True
-        rem_col = 102
-        rem_acol = 0
-        col1 = 0
-        acol1 = 101
-        col2 = 101
-        acol2 = 102
-    elif id1 == 21 and (-3.1 < id2 < 0):
-        # gluon antiquark pair
-        remnant = True
-        rem_col = 102
-        rem_acol = 0
-        col1 = 101
-        acol1 = 102
-        col2 = 0
-        acol2 = 101
-    elif (3.1 > id1 > 0) and id2 == 21:
-        # quark gluon pair
-        remnant = True
-        rem_col = 0
-        rem_acol = 102
-        col1 = 101
-        acol1 = 0
-        col2 = 102
-        acol2 = 101
-    elif id1 == 21 and (3.1 > id2 > 0):
-        # gluon quark pair
-        remnant = True
-        rem_col = 0
-        rem_acol = 101
-        col1 = 101
-        acol1 = 102
-        col2 = 102
-        acol2 = 0
-    elif (3.1 > id1 > 0) and (3.1 > id2 > 0):
-        # quark quark pair
-        remnant = True
-        rem_col = 0
-        rem_acol = 101
-        rem2_col = 0
-        rem2_acol = 102
-        col1 = 101
-        acol1 = 0
-        col2 = 102
-        acol2 = 0
-    elif (-3.1 < id1 < 0) and (-3.1 < id2 < 0):
-        # antiquark antiquark pair
-        remnant = True
-        rem_col = 101
-        rem_acol = 0
-        rem2_col = 102
-        rem2_acol = 0
-        col1 = 0
-        acol1 = 101
-        col2 = 0
-        acol2 = 102
-
-    col_array = np.array([col1, col2])
-    acol_array = np.array([acol1, acol2])
-    if remnant:
-        col_array = np.append(col_array, rem_col)
-        acol_array = np.append(acol_array, rem_acol)
-    if remnant2:
-        col_array = np.append(col_array, rem2_col)
-        acol_array = np.append(acol_array, rem2_acol)
-
-    ############################################
-    # Set up Pythia instance for hadronization #
-    ############################################
-
-    # Instantiate Pythia
-    pythia_had = pythia8.Pythia("", False)  # Print header = False
-
-    # Use seed based on time
-    pythia_had.readString("Random:setSeed = on")
-    pythia_had.readString("Random:seed = 0")
-
-    # Only do the hadron level stuff
-    pythia_had.readString("ProcessLevel:all = off")
-    pythia_had.readString("PartonLevel:all = off")
-    pythia_had.readString("HadronLevel:all = on")
-
-    # Don't allow pi^0 to decay:
-    pythia_had.readString("111:mayDecay = off")
-
-    # Allow color reconnection in hadronization
-    # pythia_had.readString("ColourReconnection:forceHadronLevelCR = on")
-
-    # Turn off event checks that enforce conservation of momentum in the event
-    pythia_had.readString("Check:event = on")
-
-    # Tell Pythia to "do the thing" (run with the configurations above)
-    pythia_had.init()
-
-    #################################
-    # Run the hadronization routine #
-    #################################
-    # We repeatedly hadronize until we come out with a satisfactory pion, saving info on the statistical weight
-    accepted = False
-    total_pions = 0
-    total_had_runs = 0
-    success_had_runs = 0
-    while total_had_runs < max_had_runs:
-
-        # Clear the event
-        pythia_had.event.reset()
-
-        # Add in edited particles
-        part_i = -1
-        i = 0
-        # jet 1
-        pythia_had.event.append(id=int(id1), status=int(23),
-                                col=int(col_array[0]), acol=int(acol_array[0]),
-                                px=float(jet1.p_x), py=float(jet1.p_y), pz=0,
-                                e=float(np.sqrt(jet1.p_x**2 + jet1.p_y**2 + float(jet1.m)**2)),
-                                m=float(jet1.m),
-                                scaleIn=float(scaleIn))
-        i += 1
-        # jet 2
-        pythia_had.event.append(id=int(id2), status=int(23),
-                                col=int(col_array[1]), acol=int(acol_array[1]),
-                                px=float(jet2.p_x), py=float(jet2.p_y), pz=0,
-                                e=float(np.sqrt(jet2.p_x ** 2 + jet2.p_y ** 2 + float(jet2.m) ** 2)),
-                                m=float(jet2.m),
-                                scaleIn=float(scaleIn))
-        i += 1
-
-        if remnant:
-            if rem_col != 0:
-                rem_id = np.random.default_rng().choice([2, 2, 1])
-                if rem_id == 2:
-                    rem_m = 0.0022
-                else:
-                    rem_m = 0.0047
-            else:
-                rem_id = np.random.default_rng().choice([-2, -2, -1])
-                if rem_id == -2:
-                    rem_m = 0.0022
-                else:
-                    rem_m = 0.0047
-            pythia_had.event.append(id=int(rem_id), status=int(23),
-                                    col=int(col_array[2]), acol=int(acol_array[2]),
-                                    px=0, py=0, pz=10000,
-                                    e=float(np.sqrt(0 ** 2 + 0 ** 2 + 10000 **2 + rem_m ** 2)),
-                                    m=float(rem_m),
-                                    scaleIn=float(scaleIn))
-            i += 1
-        if remnant2:
-            if rem2_col != 0:
-                rem2_id = np.random.default_rng().choice([2, 2, 1])
-                if rem2_id == 2:
-                    rem2_m = 0.0022
-                else:
-                    rem2_m = 0.0047
-            else:
-                rem2_id = np.random.default_rng().choice([-2, -2, -1])
-                if rem2_id == -2:
-                    rem2_m = 0.0022
-                else:
-                    rem2_m = 0.0047
-            pythia_had.event.append(id=int(rem2_id), status=int(23),
-                                    col=int(col_array[3]), acol=int(acol_array[3]),
-                                    px=0, py=0, pz=-10000,
-                                    e=float(np.sqrt(0 ** 2 + 0 ** 2 + 10000 **2 + rem2_m ** 2)),
-                                    m=float(rem2_m),
-                                    scaleIn=float(scaleIn))
-            i += 1
-        # part_i = -1
-        # for particle in pythia_had.process:
-        #     part_i += 1
-        # # Force parton shower
-        # # Set all particles allowed to shower
-        # shower_pTmax = pythia_process.infoPython().pTHat()
-        # pythia_had.forceTimeShower(iBeg=part_i-1, iEnd=part_i, pTmax=shower_pTmax)  #, nBranchMax=10)
-
-        # List particles for debug
-        pythia_had.event.list()
-
-        # hadronize - restart if event checks fail
-        if not pythia_had.next():
-            total_had_runs += 1  # Add a total hadronization
-            continue
-        success_had_runs += 1  # Add a successful hadronization
-        total_had_runs += 1  # Add a total hadronization
-
-        # List particles again for debug
-        pythia_had.event.list()
-
-        # Look for an acceptable pion
-        hadron_accepted_px = np.array([])
-        hadron_accepted_py = np.array([])
-        hadron_accepted_pz = np.array([])
-        hadron_accepted_y = np.array([])
-        hadron_accepted_e = np.array([])
-        hadron_accepted_pt = np.array([])
-        hadron_accepted_id = np.array([])
-        hadron_f_pt = np.array([])
-        pions_f = 0
-        for particle in pythia_had.event:
-            if particle.status() > 0:  # Particle exists in the final state
-                id = particle.id()
-                if id == 111 or np.abs(id) == 211:  # Collect pions
-                    pions_f += 1
-                    hadron_y = particle.y()
-                    hadron_pt = particle.pT()
-                    hadron_f_pt = np.append(hadron_f_pt, np.abs(hadron_pt))
-                    pions_f += 1
-                    if np.abs(hadron_y) < 1:  # Particle is at mid-rapidity
-                        if np.abs(hadron_pt) > 1:  # Particle is hard -- substantially above medium scale
-                            accepted = True
-                            hadron_accepted_px = np.append(hadron_accepted_px, particle.px())
-                            hadron_accepted_py = np.append(hadron_accepted_py, particle.py())
-                            hadron_accepted_pz = np.append(hadron_accepted_pz, particle.pz())
-                            hadron_accepted_y = np.append(hadron_accepted_y, hadron_y)
-                            hadron_accepted_e = np.append(hadron_accepted_e, particle.e())
-                            hadron_accepted_pt = np.append(hadron_accepted_pt, np.abs(particle.pT()))
-                            hadron_accepted_id = np.append(hadron_accepted_id, particle.id())
-
-        # Count pions and runs to determine weight of the final pion
-        total_pions += pions_f
-
-        if accepted:
-            break
-
-
-    hadrons = pd.DataFrame(
-        {
-            'id': hadron_accepted_id.astype(int),
-            'px': hadron_accepted_px.astype(float),
-            'py': hadron_accepted_py.astype(float),
-            'pz': hadron_accepted_pz.astype(float),
-            'pt': hadron_accepted_pt.astype(float),
-            'y': hadron_accepted_y.astype(float),
-            'e': hadron_accepted_e.astype(float),
-            'weight': np.full_like(hadron_accepted_id, float(weight)).astype(float),
-            'num_hrz': np.full_like(hadron_accepted_id, int(success_had_runs)).astype(int),
-            'failures': np.full_like(hadron_accepted_id, int(total_had_runs - success_had_runs)).astype(int)
-        })
-
-    return hadrons
-
 
 # Function to hadronize a list of particles already including colors and anticolors and get pythia event
-def pp_shower_hadronize(particles):
+def pp_shower_hadronize(ape_event):
+    logging.info('Hadronizing particles...')
     # Settings
     y_res = 1
     max_had_runs = 10000
@@ -512,6 +280,9 @@ def pp_shower_hadronize(particles):
 
     # Instantiate Pythia
     pythia_had = pythia8.Pythia("", False)  # Print header = False
+    pythia_had.readString("Print:quiet = on")  # Don't print anything but the basics
+    pythia_had.readString("Print:init = off")  # Don't print all of the initialization business.
+    pythia_had.readString("Print:next = off")  # Don't print all of the event business when we hadronize.
 
     # Use seed based on time
     pythia_had.readString("Random:setSeed = on")
@@ -528,8 +299,8 @@ def pp_shower_hadronize(particles):
     # Allow color reconnection in hadronization
     # pythia_had.readString("ColourReconnection:forceHadronLevelCR = on")
 
-    # Turn off event checks that enforce conservation of momentum in the event
-    pythia_had.readString("Check:event = on")
+    # Turn off event checks that enforce conservation of momentum and such in the event
+    pythia_had.readString("Check:event = off")
 
     # Tell Pythia to "do the thing" (run with the configurations above)
     pythia_had.init()
@@ -537,46 +308,74 @@ def pp_shower_hadronize(particles):
     #################################
     # Run the hadronization routine #
     #################################
-    # We repeatedly hadronize until we come out with a satisfactory pion, saving info on the statistical weight
-    accepted = False
-    total_pions = 0
+    # Try to hadronize until we get one that clears the event check.
     total_had_runs = 0
-    success_had_runs = 0
     while total_had_runs < max_had_runs:
 
         # Clear the event
         pythia_had.event.reset()
 
-        # Add in edited particles
-        for index, particle in particles.iterrows():
-            pythia_had.event.append(id=int(particle['id']), status=int(particle['status']),
-                                    col=int(particle['col']), acol=int(particle['acol']),
-                                    px=float(particle['px']), py=float(particle['py']), pz=float(particle['pz']),
-                                    e=float(np.sqrt(float(particle['px']) ** 2 + float(particle['py']) ** 2
-                                                    + float(particle['pz']) **2 + float(particle['m']) ** 2)),
-                                    m=float(particle['m']),
-                                    scaleIn=float(particle['scaleIn']))
+        # Add in edited particles -- note that this requires color connections already handled elsewhere.
+        for p in ape_event.particles:
+            scalein = 0.0 if p.scalein is None else float(p.scalein)
 
-
-        # part_i = -1
-        # for particle in pythia_had.process:
-        #     part_i += 1
-        # # Force parton shower
-        # # Set all particles allowed to shower
-        # shower_pTmax = pythia_process.infoPython().pTHat()
-        # pythia_had.forceTimeShower(iBeg=part_i-1, iEnd=part_i, pTmax=shower_pTmax)  #, nBranchMax=10)
+            pythia_had.event.append(
+                id=int(p.id),
+                status=int(23),  # typical: outgoing parton for hadronization input
+                col=int(p.col),
+                acol=int(p.acol),
+                px=float(p.px),
+                py=float(p.py),
+                pz=float(p.pz),
+                e=float(p.E0),     # uses on-shell energy with Pythia mass
+                m=float(p.m0),     # uses Pythia's masses
+                scaleIn=scalein,
+            )
 
         # List particles for debug
-        pythia_had.event.list()
+        # pythia_had.event.list()
 
         # hadronize - restart if event checks fail
-        if not pythia_had.next():
+        event_success = pythia_had.next()
+        if not event_success:
             total_had_runs += 1  # Add a total hadronization
             continue
-        success_had_runs += 1  # Add a successful hadronization
+        success_had_run = True
         total_had_runs += 1  # Add a total hadronization
+        break
 
-        # List particles again for debug
-        pythia_had.event.list()
+    # List particles again for debug
+    logging.debug("Hadronization Event Check Success: {}".format(event_success))
+    # pythia_had.event.list()
 
+    logging.info('Hadronization complete.')
     return pythia_had.event
+
+
+def radial_plot(pythia_event : pythia8.Event, bottom=8, max_height=4, N=80):
+    num_particles = pythia_event.size()
+
+    weight_array = np.array([])  # Array for weight of particle
+    phi_array = np.array([])  # Array for azimuthal coordinate of particle
+    for i in range(num_particles):
+        p = pythia_event[i]
+        if p.isFinal():  # Only record final state particles
+            phi_array = np.append(phi_array, p.phi())
+            weight_array = np.append(weight_array, p.pT())
+
+
+
+    phi_bins = np.linspace(0.0, 2 * np.pi, N, endpoint=False)
+    counts, _ = np.histogram(phi_array, bins=phi_bins, weights=weight_array)
+    radii = counts
+    width = (2 * np.pi) / N
+
+    ax = plt.subplot(111, polar=True)
+    bars = ax.bar(phi_bins, radii, width=width, bottom=bottom)
+
+    # Use custom colors and opacity
+    for r, bar in zip(radii, bars):
+        bar.set_facecolor(plt.cm.jet(r / 10.))
+        bar.set_alpha(0.8)
+
+    plt.show()

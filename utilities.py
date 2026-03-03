@@ -490,3 +490,61 @@ def xarray_ify_many_ff(df, pt_series='pt_f', phi_series='phi_f', z_series='z', w
         del weights
 
     return xr_all
+
+
+# Get the component of vector a perpendicular to vector b.
+def perp_vec(a, b):
+    # Get numpy arrays
+    a = np.asarray(a, dtype=float)
+    b = np.asarray(b, dtype=float)
+
+    # Magnitude of p
+    pp = np.dot(b, b)
+
+    # Subtract off component of u perpendicular to p
+    return a - (np.dot(a, b) / pp) * b
+
+# Get the component of vector a parallel to vector b.
+def par_vec(a, b):
+    # Get numpy arrays
+    a = np.asarray(a, dtype=float)
+    b = np.asarray(b, dtype=float)
+
+    # Magnitude of p
+    pp = np.dot(b, b)
+
+    # Component of u parallel to p
+    return (np.dot(a, b) / pp) * b
+
+
+def zeta(q=0, maxAttempts=5, batch=1000):
+    # Special cases making things easier
+    if q == 0:
+        rng = np.random.default_rng()
+        return rng.random() * 2
+    elif q == -1:
+        return 1
+
+    attempt = 0
+    while attempt < maxAttempts:
+        # Generate random point in 3D box of l = w = gridWidth and height maximum temp.^6
+        # Origin at center of bottom of box
+        pointArray = utilities.random_2d(num=batch, boxSize=q + 2, maxProb=1)
+        for point in pointArray:
+            x = point[0]
+            y = point[1]
+            targetVal = ((1 + q) / ((q + 2) ** (1 + q))) * ((q + 2 - x) ** q)
+
+            # Check if point under 2D temp PDF curve
+            if float(y) < float(targetVal):
+                # If under curve, accept point and return
+                # print("Attempt " + str(attempt) + " successful with point " + str(i) + "!!!")
+                # print(point)
+                # print("Random height: " + str(zPoints[i]))
+                # print("Target <= height: " + str(float(targetTemp)))
+                return x
+        print("Zeta Parameter Sample Attempt: " + str(attempt) + " failed.")
+        attempt += 1
+    print("Catastrophic error in zeta parameter sampling!")
+    print("AHHHHHHHHHHHHHHH!!!!!!!!!!!")
+    return 0

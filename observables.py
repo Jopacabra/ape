@@ -1,103 +1,77 @@
 import numpy as np
-import xarray as xr
 import timeit
 
-
-# Function to compute vns for a grouping of hard particles in an xarray dataarray
-def compute_vns(xr_da, n_list=np.array([2, 3, 4])):
-    ###################
-    # Compute results #
-    ###################
-    seed = int(xr_da.attrs['seed'])
-    # Compute v2
-    t_0 = timeit.default_timer()
-    # First we need to compute the pt and phi positions of all of the particles.
-    phis = xr_da.phi.to_numpy()
-    pts = xr_da.pt.to_numpy()
-
-    # Create dictionaries for per-event usage
-    re_event_hard_v = {}
-    im_event_hard_v = {}
-    event_hard_psi = {}
-
-    # Reset event arrays
-    for n in n_list:
-        re_event_hard_v[n] = np.array([])
-        im_event_hard_v[n] = np.array([])
-        event_hard_psi[n] = np.array([])
-
-    event_weight = np.array([])
-    for pt in pts:
-        # Get the weight in this pt bin, summed over all ids
-        try:  # Sum over flavors, if given a partonic xarray
-            weights = xr_da.sel(pt=pt).sum(dim=['pid']).to_numpy()
-        except ValueError:
-            weights = xr_da.sel(pt=pt).to_numpy()
-        event_weight = np.append(event_weight, np.sum(weights))
-        for n in n_list:
-            # Compute hard psi_2
-            sin_phases = np.sum(np.sin(n * phis) * weights)
-            cos_phases = np.sum(np.cos(n * phis) * weights)
-            hard_psi_n = (1 / n) * np.arctan2(sin_phases, cos_phases)
-
-            # Compute the v2 phase associated with each phi position
-            phases = np.exp(1j * n * phis)
-
-            # Compute v2 and append to storage array -- divide by zero gives NaN for numpy array sums like this
-            hard_vn = np.sum(weights * phases) / np.sum(weights)
-
-            re_event_hard_v[n] = np.append(re_event_hard_v[n], np.real(hard_vn))
-            im_event_hard_v[n] = np.append(im_event_hard_v[n], np.imag(hard_vn))
-            event_hard_psi[n] = np.append(event_hard_psi[n], hard_psi_n)
-
-    # Record vn and psin
-    re_event_hard_vn_stacked = np.stack([re_event_hard_v[n] for n in n_list], axis=0)
-    im_event_hard_vn_stacked = np.stack([im_event_hard_v[n] for n in n_list], axis=0)
-    event_hard_psin_stacked = np.stack([event_hard_psi[n] for n in n_list], axis=0)
-    re_vn_dataarray = xr.DataArray(re_event_hard_vn_stacked, coords={"n": n_list, "pt": pts})
-    im_vn_dataarray = xr.DataArray(im_event_hard_vn_stacked, coords={"n": n_list, "pt": pts})
-    psin_dataarray = xr.DataArray(event_hard_psin_stacked, coords={"n": n_list, "pt": pts})
-    weight_dataarray = xr.DataArray(event_weight, coords={"pt": pts})
-
-    # Apply attributes to output dataarray
-    for output_da in [re_vn_dataarray, im_vn_dataarray, psin_dataarray, weight_dataarray]:
-        output_da.attrs = xr_da.attrs
-
-    # Add arrays to proper dataframe
-    result_ds = xr.Dataset({})
-    result_ds[str(seed) + "_re_vn"] = re_vn_dataarray
-    result_ds[str(seed) + "_im_vn"] = im_vn_dataarray
-    result_ds[str(seed) + "_psin"] = psin_dataarray
-    result_ds[str(seed) + "_weight"] = weight_dataarray
-
-    return result_ds
+import matplotlib.pyplot as plt
+import fastjet
 
 
-# Function to compute R_AA for a grouping of hard particles in two xarray dataarrays
-def compute_raa(xr_da_f, xr_da_i):
-    seed = int(xr_da_f.attrs['seed'])
+def EEC(event, plot=False, pT_min=5, bins=np.linspace(-1, 1, 21)):
+    """
+    Function to compute energy-energy correlator for all particles in the event record.
+    """
 
-    # Compute R_AA for each pt bin
-    pts = xr_da_f.pt.to_numpy()  # Get pt bins
-    event_raa = np.array([])
-    for pt in pts:
-        # Get the weight in this pt bin, summed over all ids
-        weight_f = xr_da_f.sel(pt=pt).sum()
-        weight_i = xr_da_i.sel(pt=pt).sum()
-        try:
-            raa = weight_f / weight_i
-        except:
-            raa = np.nan
-        event_raa = np.append(event_raa, raa)
+    # Access final state particles
+    particles = [p for p in event if p.isFinal() and p.isCharged()]
 
-    # Create xarray dataarray
-    raa_dataarray = xr.DataArray(event_raa, coords={"pt": pts})
+    # Compute total energy
+    total_energy = 0
+    for i, p1 in enumerate(particles):
+        total_energy += p1.e()
 
-    # Apply attributes to output dataarray
-    raa_dataarray.attrs = xr_da_f.attrs
+    # Conceptual EEC calculation
+    cos_array = np.array([])
+    EEC_array = np.array([])
+    weight_array = np.array([])
+    for i, p1 in enumerate(particles):
+        # Enforce an energy cut on the first particle
+        if p1.e() < pT_min:
+            continue
+        for j, p2 in enumerate(particles):
+            # Enforce an energy cut on the second particle
+            if p2.e() < pT_min:
+                continue
+            if i >= j: continue  # Avoid double counting
 
-    # Add arrays to proper dataframe
-    result_ds = xr.Dataset({})
-    result_ds[str(seed) + "_raa"] = raa_dataarray
+            # Calculate angle and energy weight -- use absolute value to set theta_2 > theta_1 -- exchanges i and j
+            cos_theta = np.abs((p1.px() * p2.px() + p1.py() * p2.py() + p1.pz() * p2.pz()) / (p1.pAbs() * p2.pAbs()))
+            weight = (p1.e() * p2.e()) / (total_energy ** 2)
+            EEC = cos_theta * weight
 
-    return result_ds
+            # Add to arrays
+            cos_array = np.append(cos_array, cos_theta)
+            EEC_array = np.append(EEC_array, EEC)
+            weight_array = np.append(weight_array, weight)
+
+    # Bin the values of cos_array and compute average EEC
+    bin_centers = (bins[:-1] + bins[1:])/2  # Compute bin centers
+
+    # Calculate weighted sums and average
+    hist_values, _ = np.histogram(cos_array, bins=bins, weights=weight_array)
+    hist_weighted_EEC, _ = np.histogram(cos_array, bins=bins, weights=EEC_array * weight_array)
+    average_EEC = np.nan_to_num(hist_weighted_EEC / hist_values, nan=0.0)  # Sets nans from hist_values=0 to be 0.0.
+
+    if plot:
+        # Plot the results
+        plt.figure(figsize=(8, 6))
+        plt.plot(bin_centers, average_EEC, marker='o', linestyle='-', color='b', label='Weighted Avg EEC')
+        plt.xlabel('cos(theta)', fontsize=14)
+        plt.ylabel('Average EEC', fontsize=14)
+        plt.title('Energy-Energy Correlation (EEC) vs. cos(theta)', fontsize=16)
+        plt.legend(fontsize=12)
+        plt.grid(True)
+        plt.xscale("log")
+        plt.yscale("log")
+        plt.show()
+
+    return average_EEC, bins
+
+
+def fastjet_example():
+    particles = []
+    particles.append(fastjet.PseudoJet(100.0, 0.0, 0.0, 100.0))  # px, py, pz, E
+    particles.append(fastjet.PseudoJet(150.0, 0.0, 0.0, 150.0))
+    R = 0.4
+    jet_def = fastjet.JetDefinition(fastjet.antikt_algorithm, R)
+    jets = jet_def(particles)
+    print(jet_def)
+    for jet in jets: print(jet)

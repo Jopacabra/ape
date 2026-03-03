@@ -7,9 +7,15 @@ try:
 except:
     print('NO MATPLOTLIB')
 from scipy.interpolate import RegularGridInterpolator
-import config
 import logging
 
+from dataclasses import dataclass, field
+from typing import Any, Callable, Optional, Protocol
+
+class NoMedium(Exception):
+    """
+    Raise to end evolution while computing an interaction if there is no event data for the coordinates of the particle
+    """
 
 class osu_hydro_file:
     def __init__(self, file_path, event_name=None, temp_conv_factor=0.1973269788):
@@ -354,75 +360,176 @@ class osu_hydro_file:
         return minTemp
 
 
+class _Field3D(Protocol):
+    def __call__(self, pts: np.ndarray) -> np.ndarray: ...
+    @property
+    def grid(self) -> Any: ...
+
+
+@dataclass(frozen=True, slots=True)
+class _BoostInvariantMilneAdapter:
+    """
+    Adapter for boost-invariant 2+1D fields.
+
+    Accepts points in either:
+      - (tau, x, y)  OR
+      - (tau, x, y, eta_s)
+
+    and drops eta_s (assumes longitudinal boost invariance).
+    """
+    field_3d: Callable[[np.ndarray], np.ndarray]
+
+    def __call__(self, pts: Any) -> np.ndarray:
+        arr = np.asarray(pts)
+        if arr.shape[-1] == 4:
+            arr = arr[..., :3]
+        elif arr.shape[-1] != 3:
+            raise ValueError(f"Expected points with last dim 3 or 4, got shape {arr.shape}")
+        try:
+            return self.field_3d(arr)
+        except ValueError as e:
+            # logging.exception(e)
+            logging.debug(e)
+            logging.debug("No event data at requested coordinate!")
+            raise NoMedium()
+
+    @property
+    def grid(self) -> Any:
+        try:
+            return getattr(self.field_3d, "grid", None)
+        except Exception as e:
+            logging.exception(e)
+            logging.error("No grid available for field.")
+            return None
+
+
 # Plasma object as used for integration and muckery
+@dataclass(slots=True)
 class plasma_event:
-    def __init__(self, temp_func=None, x_vel_func=None, y_vel_func=None, grad_x_func=None, grad_y_func=None,
-                 grad_x_u_x_func=None, grad_x_u_y_func=None, grad_y_u_x_func=None, grad_y_u_y_func=None,
-                 event=None, name=None, rmax=None):
-        # Initialize all the ordinary plasma parameters
-        if event is not None:
-            self.temp = event.interpolate_temp_grid()
-            self.x_vel = event.interpolate_x_vel_grid()
-            self.y_vel = event.interpolate_y_vel_grid()
-            self.temp_grad_x = event.interpolate_temp_grad_x_grid()
-            self.temp_grad_y = event.interpolate_temp_grad_y_grid()
-            self.grad_x_u_x = event.interpolate_grad_x_u_x_grid()
-            self.grad_x_u_y = event.interpolate_grad_x_u_y_grid()
-            self.grad_y_u_x = event.interpolate_grad_y_u_x_grid()
-            self.grad_y_u_y = event.interpolate_grad_y_u_y_grid()
-            self.name = event.name
-            self.timestep = event.timestep
-            self.t0 = np.amin(self.temp.grid[0])
-            self.tf = np.amax(self.temp.grid[0])
-            self.xmin = np.amin(self.temp.grid[1])
-            self.xmax = np.amax(self.temp.grid[1])
-            self.ymin = np.amin(self.temp.grid[2])
-            self.ymax = np.amax(self.temp.grid[2])
-            self.gridstep = event.gridstep
-        elif temp_func is not None and x_vel_func is not None and y_vel_func is not None:
-            self.temp = temp_func
-            self.x_vel = x_vel_func
-            self.y_vel = y_vel_func
-            self.temp_grad_x = grad_x_func
-            self.temp_grad_y = grad_y_func
-            self.grad_x_u_x = grad_x_u_x_func
-            self.grad_x_u_y = grad_x_u_y_func
-            self.grad_y_u_x = grad_y_u_x_func
-            self.grad_y_u_y = grad_y_u_y_func
-            self.name = name
+    """
+    Medium fields in Milne coordinates (tau, x, y, eta_s), assuming longitudinal boost invariance.
+
+    Notes:
+      - Internally, the underlying hydro interpolators are still 2+1D: f(tau, x, y).
+      - All field callables (temp, x_vel, ...) accept either (tau,x,y) or (tau,x,y,eta_s).
+      - For backward compatibility, attribute names t0/tf/timestep and methods tspace()/plot(time=...)
+        remain, but 'time' should be interpreted as proper time tau.
+    """
+
+    # Construction inputs (either provide hydro_object, or provide the 2+1D callables directly)
+    hydro_object: Optional[Any] = None
+    temp_func: Optional[Callable[[np.ndarray], np.ndarray]] = None
+    x_vel_func: Optional[Callable[[np.ndarray], np.ndarray]] = None
+    y_vel_func: Optional[Callable[[np.ndarray], np.ndarray]] = None
+    grad_x_func: Optional[Callable[[np.ndarray], np.ndarray]] = None
+    grad_y_func: Optional[Callable[[np.ndarray], np.ndarray]] = None
+    grad_x_u_x_func: Optional[Callable[[np.ndarray], np.ndarray]] = None
+    grad_x_u_y_func: Optional[Callable[[np.ndarray], np.ndarray]] = None
+    grad_y_u_x_func: Optional[Callable[[np.ndarray], np.ndarray]] = None
+    grad_y_u_y_func: Optional[Callable[[np.ndarray], np.ndarray]] = None
+    name: Optional[str] = None
+    rmax: Optional[float] = None
+
+    # Wired-up public callables (set in __post_init__)
+    temp: Callable[[Any], np.ndarray] = field(init=False)
+    x_vel: Callable[[Any], np.ndarray] = field(init=False)
+    y_vel: Callable[[Any], np.ndarray] = field(init=False)
+    z_vel: Callable[[Any], np.ndarray] = field(init=False)
+    temp_grad_x: Callable[[Any], np.ndarray] = field(init=False)
+    temp_grad_y: Callable[[Any], np.ndarray] = field(init=False)
+    grad_x_u_x: Callable[[Any], np.ndarray] = field(init=False)
+    grad_x_u_y: Callable[[Any], np.ndarray] = field(init=False)
+    grad_y_u_x: Callable[[Any], np.ndarray] = field(init=False)
+    grad_y_u_y: Callable[[Any], np.ndarray] = field(init=False)
+
+    # Domain metadata (set in __post_init__)
+    timestep: float = field(init=False)
+    t0: float = field(init=False)
+    tf: float = field(init=False)
+    xmin: float = field(init=False)
+    xmax: float = field(init=False)
+    ymin: float = field(init=False)
+    ymax: float = field(init=False)
+    gridstep: Optional[float] = field(init=False, default=None)
+
+    def __post_init__(self) -> None:
+        """
+
+        """
+        # Source interpolators/callables in (tau, x, y)
+        if self.hydro_object is not None:
+            temp_3d = self.hydro_object.interpolate_temp_grid()
+            xvel_3d = self.hydro_object.interpolate_x_vel_grid()
+            yvel_3d = self.hydro_object.interpolate_y_vel_grid()
+            gradxT_3d = self.hydro_object.interpolate_temp_grad_x_grid()
+            gradyT_3d = self.hydro_object.interpolate_temp_grad_y_grid()
+            grad_xux_3d = self.hydro_object.interpolate_grad_x_u_x_grid()
+            grad_xuy_3d = self.hydro_object.interpolate_grad_x_u_y_grid()
+            grad_yux_3d = self.hydro_object.interpolate_grad_y_u_x_grid()
+            grad_yuy_3d = self.hydro_object.interpolate_grad_y_u_y_grid()
+
+            self.name = self.hydro_object.name
+            self.timestep = float(self.hydro_object.timestep)
+            self.gridstep = float(getattr(self.hydro_object, "gridstep", None))
+        elif self.temp_func is not None and self.x_vel_func is not None and self.y_vel_func is not None:
+            temp_3d = self.temp_func
+            xvel_3d = self.x_vel_func
+            yvel_3d = self.y_vel_func
+            gradxT_3d = self.grad_x_func
+            gradyT_3d = self.grad_y_func
+            grad_xux_3d = self.grad_x_u_x_func
+            grad_xuy_3d = self.grad_x_u_y_func
+            grad_yux_3d = self.grad_y_u_x_func
+            grad_yuy_3d = self.grad_y_u_y_func
+
+            # Attempt to infer domain from interpolator-like objects
             try:
-                # Attempt to get timestep as if the functions are regular interpolator objects.
-                self.timestep = self.temp.grid[0][-1] - self.temp.grid[0][-2]
-                self.t0 = np.amin(self.temp.grid[0])
-                self.tf = np.amax(self.temp.grid[0])
-                self.xmin = np.amin(self.temp.grid[1])
-                self.xmax = np.amax(self.temp.grid[1])
-                self.ymin = np.amin(self.temp.grid[2])
-                self.ymax = np.amax(self.temp.grid[2])
-            except AttributeError:
-                # Set default values for parameters
+                grid = getattr(temp_3d, "grid")
+                self.timestep = float(grid[0][-1] - grid[0][-2])
+            except Exception as e:
+                logging.exception(e)
                 logging.warning('No valid parameters for event. Setting to defaults.')
                 self.timestep = 0.1
-                self.t0 = 0
-                self.tf = 15
-                self.xmin = -15
-                self.xmax = 15
-                self.ymin = -15
-                self.ymax = 15
         else:
-            print('Plasma instantiation failed.')
-            raise Exception
+            raise ValueError("Plasma instantiation failed: provide hydro_object or (temp_func, x_vel_func, y_vel_func).")
 
-        self.rmax = rmax
+        # Wrap in boost-invariant Milne adapters (now accept (...,3) or (...,4))
+        self.temp = _BoostInvariantMilneAdapter(temp_3d)
+        self.x_vel = _BoostInvariantMilneAdapter(xvel_3d)
+        self.y_vel = _BoostInvariantMilneAdapter(yvel_3d)
+        self.z_vel = (lambda x : np.tanh(x[3]))
+        self.temp_grad_x = _BoostInvariantMilneAdapter(gradxT_3d) if gradxT_3d is not None else _BoostInvariantMilneAdapter(lambda p: np.zeros(p.shape[:-1]))
+        self.temp_grad_y = _BoostInvariantMilneAdapter(gradyT_3d) if gradyT_3d is not None else _BoostInvariantMilneAdapter(lambda p: np.zeros(p.shape[:-1]))
+        self.grad_x_u_x = _BoostInvariantMilneAdapter(grad_xux_3d) if grad_xux_3d is not None else _BoostInvariantMilneAdapter(lambda p: np.zeros(p.shape[:-1]))
+        self.grad_x_u_y = _BoostInvariantMilneAdapter(grad_xuy_3d) if grad_xuy_3d is not None else _BoostInvariantMilneAdapter(lambda p: np.zeros(p.shape[:-1]))
+        self.grad_y_u_x = _BoostInvariantMilneAdapter(grad_yux_3d) if grad_yux_3d is not None else _BoostInvariantMilneAdapter(lambda p: np.zeros(p.shape[:-1]))
+        self.grad_y_u_y = _BoostInvariantMilneAdapter(grad_yuy_3d) if grad_yuy_3d is not None else _BoostInvariantMilneAdapter(lambda p: np.zeros(p.shape[:-1]))
 
-
+        # Set domains from the underlying interpolator grid when available
+        try:
+            grid = getattr(temp_3d, "grid")
+            self.t0 = float(np.amin(grid[0]))
+            self.tf = float(np.amax(grid[0]))
+            self.xmin = float(np.amin(grid[1]))
+            self.xmax = float(np.amax(grid[1]))
+            self.ymin = float(np.amin(grid[2]))
+            self.ymax = float(np.amax(grid[2]))
+        except Exception as e:
+            logging.exception(e)
+            # Defaults (legacy behavior)
+            self.t0 = 0.0
+            self.tf = 15.0
+            self.xmin = -15.0
+            self.xmax = 15.0
+            self.ymin = -15.0
+            self.ymax = 15.0
 
     # Method to get array on space domain of event with given resolution
     def xspace(self, resolution=100, fraction=1):
-        return np.arange(start=fraction*self.xmin, stop=fraction*self.xmax,
-                         step=((fraction*self.xmax - fraction*self.xmin) / resolution))
+        return np.arange(start=fraction * self.xmin, stop=fraction * self.xmax,
+                         step=((fraction * self.xmax - fraction * self.xmin) / resolution))
 
-    # Method to get array on time domain of event with given resolution
+    # Method to get array on proper time domain of event with given resolution
     def tspace(self, resolution=100):
         return np.arange(start=self.t0, stop=self.tf, step=((self.tf - self.t0) / resolution))
 
@@ -485,21 +592,6 @@ class plasma_event:
                 + self.grad_y_u_x(point) * (np.cos(phi)**2)
                 - self.grad_x_u_y(point) * (np.sin(phi)**2)
                 + self.grad_y_u_y(point) * np.sin(phi) * np.cos(phi))
-
-    # Method to return gradient of the flow
-    # at a particular point parallel to a given angle phi.
-    def grad_par_flow(self, point, phi):
-        # Compute x and y temperature gradient at given point
-        grad_x = self.flow_grad_x(point)
-        grad_y = self.flow_grad_y(point)
-
-        # Compute unit vector parallel to given phi
-        e_perp = np.array([np.cos(phi), np.sin(phi)])
-
-        # Compute temperature gradient perp to given phi
-        grad_perp_flow = (grad_x * e_perp[0]) + (grad_y * e_perp[1])
-
-        return grad_perp_flow
 
     # Method to find the maximum temperature of a plasma object
     def max_temp(self, resolution=100, time='i'):
@@ -659,9 +751,12 @@ class plasma_event:
     # Can plot contour or density / colormesh for temps, stream or quiver for velocities
     # Other options can adjust the output.
     # Returns the plot object to make integration elsewhere nicer.
-    def plot(self, time, temp_resolution=100, vel_resolution=30, grad_resolution=30,
+    def plot(self, time=None, temp_resolution=100, vel_resolution=100, grad_resolution=100,
              temptype='contour', veltype='stream', gradtype='stream', plot_temp=True, plot_vel=True, plot_grad=False,
              numContours=15, zoom=1):
+        if time is None:  # Default to initial timestep.
+            time = self.t0
+
         tempMax = self.max_temp()
 
         # Domains of physical positions to plot at (in fm)
@@ -804,10 +899,10 @@ class plasma_event:
 
         return temps, vels, grads, tempcb, velcb, gradcb
 
-# Takes callable functions that take parameters (t, x, y) for the temperature and velocities
+# Takes tabulated data for the temperature and velocities
 # and returns plasma_event objects generated from them.
 def tabulated_plasma(t_space, x_space, temp_values, x_vel_values, y_vel_values, name=None, return_grids=False):
-    print('WARNING: Gradients of temp and flow not verified')
+    logging.debug('WARNING: Gradients of temp and flow not verified')
     grid_step = float(x_space[-1] - x_space[-2])
     rmax = x_space[-1]
 

@@ -79,7 +79,7 @@ def coal_xarray(xr_partons, T=config.jet.T_HRG, max_pt=20):
     # Get array bins and create a storage DataArray of zeros
     pt_array = xr_partons.pt.to_numpy()
     phi_array = xr_partons.phi.to_numpy()
-    pid_array = xr_partons.pid.to_numpy()
+    pid_array = xr_partons.id.to_numpy()
     xr_hadrons = xr.DataArray(np.full((len(pt_array), len(phi_array)), float(0.0)),
                               coords={"pt": pt_array, "phi": phi_array})
 

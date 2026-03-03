@@ -479,7 +479,7 @@ def run_hydro(fs, event_size, grid_step=0.1, tau_fs=0.5, eswitch=0.110, coarse=F
     if not quiet:
         logging.info('format: ITime, Time, Max Energy Density, Max Temp, iRegulateCounter, iRegulateCounterBulkPi')
 
-    surface = np.fromfile('surface.dat', dtype='f8').reshape(-1, 16)
+    surface = np.fromfile('stored_events/Duke_avg/event_0/surface.dat', dtype='f8').reshape(-1, 16)
 
     # end event if the surface is empty -- this occurs in ultra-peripheral
     # events where the initial condition doesn't exceed Tswitch
@@ -574,7 +574,7 @@ def generate_event(grid_max_target=config.transport.GRID_MAX_TARGET, grid_step=c
     logging.info('Random seed selected: {}'.format(seed))
 
     # Default to duke events
-    if IC_type == 'None':  # Case for if no command line arg passed to ebe_ape.py
+    if IC_type == 'None':  # Case for if no command line arg passed to ebe_ape_21D.py
         IC_type = 'Duke'
 
     if IC_type == 'Duke':
@@ -734,7 +734,7 @@ def generate_event(grid_max_target=config.transport.GRID_MAX_TARGET, grid_step=c
     logging.info('sampling surface with frzout')
 
     # sample particles and write to file
-    with open('particles_in.dat', 'w') as f:
+    with open('stored_events/Duke_avg/event_0/particles_in.dat', 'w') as f:
         for nsamples in range(1, maxsamples + 1):
             parts = frzout.sample(event_surface, hrg)
             if parts.size == 0:
@@ -775,7 +775,7 @@ def generate_event(grid_max_target=config.transport.GRID_MAX_TARGET, grid_step=c
     ####################################
 
     # read final particle data
-    with open('particles_out.dat', 'rb') as f:
+    with open('stored_events/Duke_avg/event_0/particles_out.dat', 'rb') as f:
 
         # partition UrQMD file into oversamples
         groups = groupby(f, key=lambda l: l.startswith(b'#'))
@@ -1057,111 +1057,6 @@ def generate_jet_seed_point(event, num=1):
             pointArray = np.vstack((pointArray, newPoint))
     return pointArray
 
-
-# Function to generate new optical glauber event callable functions
-def optical_glauber(R=7.5, b=7.5, phi=0, T0=1, U0=1):
-    # Calculate ellipse height and width from ion radius (R) and impact parameter (b).
-    W = 2 * R - b
-    H = np.sqrt(4 * R ** 2 - b ** 2)
-
-    # Calculate event multiplicity and eccentricity
-    mult = 2*H*W*np.pi  # Integral of the 2D Gaussian for the temperature profile.
-    e2 = np.sqrt(1 - (W ** 2 / H ** 2))  # sqrt(1 - (semi-minor^2 / semi-major^2))
-
-    # Get cosine and sine of phi as fixed constants.
-    cos_fac = np.cos(phi)
-    sin_fac = np.sin(phi)
-
-    analytic_t = lambda t, x, y: T0 * np.exp(
-        - ((x * cos_fac + y * sin_fac) ** 2 / (2 * W ** 2)) - ((-x * sin_fac + y * cos_fac) ** 2 / (2 * H ** 2)))
-
-    analytic_ux = lambda t, x, y: U0 * np.sqrt(W * H) * np.exp(
-        - ((cos_fac * x + sin_fac * y) ** 2 / (2 * W ** 2)) - ((-sin_fac * x + cos_fac * y) ** 2 / (2 * H ** 2))) * (
-                                              ((cos_fac * x + sin_fac * y) * cos_fac / W ** 2) - (
-                                                  (-sin_fac * x + cos_fac * y) * sin_fac / H ** 2))
-
-    analytic_uy = lambda t, x, y: U0 * np.sqrt(W * H) * np.exp(
-        - ((cos_fac * x + sin_fac * y) ** 2 / (2 * W ** 2)) - ((-sin_fac * x + cos_fac * y) ** 2 / (2 * H ** 2))) * (
-                                              ((cos_fac * x + sin_fac * y) * sin_fac / W ** 2) + (
-                                                  (-sin_fac * x + cos_fac * y) * cos_fac / H ** 2))
-
-    # To generate an event object from these optical glauber functions:
-    #og_event = functional_plasma(temp_func=analytic_t, x_vel_func=analytic_ux, y_vel_func=analytic_uy)
-
-    return analytic_t, analytic_ux, analytic_uy, mult, e2
-
-
-# Function to generate new optical glauber event callable functions with log(mult) suppressed temps.
-def optical_glauber_logT(R=7.5, b=7.5, phi=0, T0=1, U0=1):
-    # Calculate ellipse height and width from ion radius (R) and impact parameter (b).
-    W = 2 * R - b
-    H = np.sqrt(4 * R ** 2 - b ** 2)
-
-    # Calculate event multiplicity and eccentricity
-    mult = 2*H*W*np.pi  # Integral of the 2D Gaussian for the temperature profile.
-    e2 = np.sqrt(1 - (W ** 2 / H ** 2))  # sqrt(1 - (semi-minor^2 / semi-major^2))
-
-    # Set temperature normalization
-    T0 = T0 * np.log(mult)
-
-    # Get cosine and sine of phi as fixed constants.
-    cos_fac = np.cos(phi)
-    sin_fac = np.sin(phi)
-
-    analytic_t = lambda t, x, y: T0 * np.exp(
-        - ((x * cos_fac + y * sin_fac) ** 2 / (2 * W ** 2)) - ((-x * sin_fac + y * cos_fac) ** 2 / (2 * H ** 2)))
-
-    analytic_ux = lambda t, x, y: U0 * np.sqrt(W * H) * np.exp(
-        - ((cos_fac * x + sin_fac * y) ** 2 / (2 * W ** 2)) - ((-sin_fac * x + cos_fac * y) ** 2 / (2 * H ** 2))) * (
-                                              ((cos_fac * x + sin_fac * y) * cos_fac / W ** 2) - (
-                                                  (-sin_fac * x + cos_fac * y) * sin_fac / H ** 2))
-
-    analytic_uy = lambda t, x, y: U0 * np.sqrt(W * H) * np.exp(
-        - ((cos_fac * x + sin_fac * y) ** 2 / (2 * W ** 2)) - ((-sin_fac * x + cos_fac * y) ** 2 / (2 * H ** 2))) * (
-                                              ((cos_fac * x + sin_fac * y) * sin_fac / W ** 2) + (
-                                                  (-sin_fac * x + cos_fac * y) * cos_fac / H ** 2))
-
-    # To generate an event object from these optical glauber functions:
-    #og_event = functional_plasma(temp_func=analytic_t, x_vel_func=analytic_ux, y_vel_func=analytic_uy)
-
-    return analytic_t, analytic_ux, analytic_uy, mult, e2
-
-
-# Function to generate new optical glauber event callable functions
-def optical_glauber_new(R=7.5, b=7.5, phi=0, T0=1, U0=1):
-    # Calculate ellipse height and width from ion radius (R) and impact parameter (b).
-    W = 2 * R - b
-    H = np.sqrt(4 * R ** 2 - b ** 2)
-
-    # Calculate event multiplicity and eccentricity
-    mult = 2*H*W*np.pi  # Integral of the 2D Gaussian for the temperature profile.
-    e2 = np.sqrt(1 - (W ** 2 / H ** 2))  # sqrt(1 - (semi-minor^2 / semi-major^2))
-
-    # Set temperature normalizations
-    T0 = T0 * np.log(mult)
-
-    # Get cosine and sine of phi as fixed constants.
-    cos_fac = np.cos(phi)
-    sin_fac = np.sin(phi)
-
-    analytic_t = lambda t, x, y: T0 * np.exp(
-        - ((x * cos_fac + y * sin_fac) ** 2 / (2 * W ** 2)) - ((-x * sin_fac + y * cos_fac) ** 2 / (2 * H ** 2)))
-
-    analytic_ux = lambda t, x, y: U0 * np.sqrt(W * H) * np.exp(- ((cos_fac * x + sin_fac * y) ** 2 / (6 * W ** 2)) - (
-                ((-sin_fac * (x) + cos_fac * y)) ** 2 / (6 * H ** 2))) * (
-                                              (((cos_fac * x + sin_fac * y)) * cos_fac / W ** 2) - (
-                                                  (-sin_fac * x + cos_fac * y) * sin_fac / H ** 2))
-
-    analytic_uy = lambda t, x, y: U0 * np.sqrt(W * H) * np.exp(
-        - ((cos_fac * x + sin_fac * y) ** 2 / (6 * W ** 2)) - ((-sin_fac * x + cos_fac * y) ** 2 / (6 * H ** 2))) * (
-                                              ((cos_fac * x + sin_fac * y) * sin_fac / W ** 2) + (
-                                                  (-sin_fac * x + cos_fac * y) * cos_fac / H ** 2))
-
-    # To generate an event object from these optical glauber functions:
-    #og_event = functional_plasma(temp_func=analytic_t, x_vel_func=analytic_ux, y_vel_func=analytic_uy)
-
-    return analytic_t, analytic_ux, analytic_uy, mult, e2
-
 # Function to create Woods-Saxon distribution initial conditions
 def woods_saxon_ic(b, A=208, R=6.62, a=0.546, p=-1, norm=1,
                    grid_step=config.transport.GRID_STEP, rmax=config.transport.GRID_MAX_TARGET):
@@ -1199,20 +1094,68 @@ def woods_saxon_ic(b, A=208, R=6.62, a=0.546, p=-1, norm=1,
     return array, grid_step
 
 # Function to create plasma object for Woods-Saxon distribution
-# Alpha is expansion power level
-def woods_saxon_plasma(b, T0=0.39, V0=0.5, A=208, R=6.62, a=0.546, alpha=0, name=None,
-                       resolution=5, rmax=10, tmin=0.5, tmax=None, return_grids=False):
+# Alpha is expansion power level --
+def woods_saxon_plasma(b, T0=0.39, A=208, a=0.546, alpha=0, name=None,
+                       resolution=5, rmax=10, tmin=0.5, tmax=None, umax=0.75, return_grids=False):
     # Defaults are Trento PbPb parameters
 
     # Determine radius
-    if R == None:
-        R = 1.25 * (A)**(1/3)  # Good approximation, re:https://en.wikipedia.org/wiki/Woods%E2%80%93Saxon_potential
+    R = 1.25 * (A)**(1/3)  # Good approximation, re:https://en.wikipedia.org/wiki/Woods%E2%80%93Saxon_potential
 
     # Define temperature and velocity functions
     ws = lambda x, y, z, x0: 1 / (1 + np.exp( (np.sqrt((x-x0)**2 + y**2 + z**2) - R) / a))
-    # temperature = lambda t, x, y : T0 * ws(x, y, -b/2) * ws(x, y, b/2)
-    x_vel_func = lambda t, x, y : np.cos(np.mod(np.arctan2(y,x), 2*np.pi)) * (V0/T0)
-    y_vel_func = lambda t, x, y: np.sin(np.mod(np.arctan2(y,x), 2 * np.pi)) * (V0/T0)
+
+    # Define grid time and space domains
+    if tmax is None:
+        tmax = 2 * rmax
+    t_space = np.linspace(tmin, tmax, int((rmax + rmax) * resolution))
+    x_space = np.linspace((0 - rmax), rmax, int((rmax + rmax) * resolution))
+    grid_step = (2 * rmax) / int((rmax + rmax) * resolution)
+
+    # Create meshgrid for function evaluation
+    t_coords, x_coords, y_coords = np.meshgrid(t_space, x_space, x_space, indexing='ij')
+    z_vals = np.arange(-R, R, 0.5)
+
+    # Compute overlap function
+    TATB = np.vectorize(lambda t, x, y: integrate.trapezoid(ws(x, y, z_vals, -b / 2))
+                                                     * integrate.trapezoid(ws(x, y, z_vals, b / 2))
+                                                     * ((tmin / t) ** (alpha)))
+
+
+    # Evaluate functions for grid points
+    temp_values = (T0 / 2.708) * np.power(TATB(t_coords, x_coords, y_coords), 1/6)
+    temp_values =  temp_values  # normalize max temp to proper event
+
+    temp_grad_x_values = np.gradient(temp_values, grid_step, axis=1)
+    temp_grad_y_values = np.gradient(temp_values, grid_step, axis=2)
+
+    max_grad_mag = np.amax(np.sqrt(temp_grad_x_values ** 2 + temp_grad_y_values ** 2))
+
+    # Velocities are proportional to negative temperature gradient.
+    x_vel_values = (-1) * umax * np.gradient(temp_values, grid_step, axis=1) / max_grad_mag
+    y_vel_values = (-1) * umax * np.gradient(temp_values, grid_step, axis=2) / max_grad_mag
+
+    logging.info(np.ndim(temp_values))
+
+    # Create and return plasma object
+    plasma_object = plasma.tabulated_plasma(t_space, x_space, temp_values, x_vel_values, y_vel_values, name=name,
+                            return_grids=return_grids)
+
+    # Return the grids of evaluated points, if requested.
+    if return_grids:
+        return plasma_object, temp_values, x_vel_values, y_vel_values,
+    else:
+        return plasma_object
+
+
+# Function to create plasma object for Woods-Saxon distribution
+# Alpha is expansion power level --
+def gaussian_plasma(b, T0=0.39, A=208, alpha=0.5, name=None,
+                       resolution=5, rmax=10, tmin=0.5, tmax=None, umax=0.75, return_grids=False):
+    # Defaults are Trento PbPb parameters
+
+    # Determine radius
+    R = float(1.25 * (A)**(1/3))  # Good approximation, re:https://en.wikipedia.org/wiki/Woods%E2%80%93Saxon_potential
 
     # Define grid time and space domains
     if tmax is None:
@@ -1224,51 +1167,29 @@ def woods_saxon_plasma(b, T0=0.39, V0=0.5, A=208, R=6.62, a=0.546, alpha=0, name
     # Create meshgrid for function evaluation
     t_coords, x_coords, y_coords = np.meshgrid(t_space, x_space, x_space, indexing='ij')
 
-    # def integrate_ws(t, x, y):
-    #     z_vals = np.arange(-R, R, 0.5)
-    #     vals = np.array([])
-    #     for z in z_vals:
-    #         new_val = ws(x, y, z, -b / 2)
-    #         vals = np.append(vals, new_val)
-    #
-    #     return np.sum(vals)
-    # def integrate_ws_2(t, x, y):
-    #     z_vals = np.arange(-R, R, 0.5)
-    #     vals = np.array([])
-    #     for z in z_vals:
-    #         new_val = ws(x, y, z, b / 2)
-    #         vals = np.append(vals, new_val)
-    #
-    #     return np.sum(vals)
-    z_vals = np.arange(-R, R, 0.5)
-    #temp_1_func = np.vectorize(lambda t, x, y: integrate.quad(lambda z: ws(x, y, z, -b / 2), -R, R) + t - t)
-    #T_B = np.vectorize(lambda t, x, y: integrate.quad(lambda z: ws(x, y, z, b / 2), -R, R) + t - t)
-    #T_A = np.vectorize(lambda t, x, y: integrate.trapezoid(ws(x, y, z_vals, -b/2)) * ((tmin/t)**(2*alpha)))
-    # T_B = np.vectorize(lambda t, x, y: integrate.trapezoid(ws(x, y, z_vals, b/2)) * ((tmin/t)**(2*alpha)))
-    TATB = np.vectorize(lambda t, x, y: integrate.trapezoid(ws(x, y, z_vals, -b / 2))
-                                                     * integrate.trapezoid(ws(x, y, z_vals, b / 2))
+    # Compute overlap function
+    TATB = np.vectorize(lambda t, x, y: np.exp(- x**2 / ((2*R - b)**2)) * np.exp(- y**2 / ((2*R)**2))
                                                      * ((tmin / t) ** (alpha)))
 
 
     # Evaluate functions for grid points
     # temp_values = np.power(np.multiply(T_A(t_coords, x_coords, y_coords),
     #                                    T_B(t_coords, x_coords, y_coords)), 1/2)
-    temp_values = (T0 / 2.708) * np.power(TATB(t_coords, x_coords, y_coords), 1/6)
-    temp_values =  temp_values  # normalize max temp to proper event
-    # temp_values = T0 * np.multiply(integrate_ws(t_coords, x_coords, y_coords), integrate_ws_2(t_coords, x_coords, y_coords))
-    x_vel_values = np.multiply(temp_values, x_vel_func(t_coords, x_coords, y_coords))
-    y_vel_values = np.multiply(temp_values, y_vel_func(t_coords, x_coords, y_coords))
+    temp_values = TATB(t_coords, x_coords, y_coords)
+    temp_values = temp_values * (T0 / np.amax(temp_values)) # normalize max temp to proper event
+
+    temp_grad_x_values = np.gradient(temp_values, grid_step, axis=1)
+    temp_grad_y_values = np.gradient(temp_values, grid_step, axis=2)
+
+    max_grad_mag = np.amax(np.sqrt(temp_grad_x_values ** 2 + temp_grad_y_values ** 2))
+
+    # Velocities are proportional to negative temperature gradient.
+    x_vel_values = (-1) * umax * np.gradient(temp_values, grid_step, axis=1) / max_grad_mag
+    y_vel_values = (-1) * umax * np.gradient(temp_values, grid_step, axis=2) / max_grad_mag
 
     logging.info(np.ndim(temp_values))
     # Compute gradients
-    # temp_grad_x_values = np.gradient(temp_values, grid_step, axis=1)
-    # temp_grad_y_values = np.gradient(temp_values, grid_step, axis=2)
 
-    # Interpolate functions
-    interped_temp_function = lambda t, x, y : interpolate.RegularGridInterpolator((t_space, x_space, x_space),
-                                                                                  temp_values)(np.array([t, x, y]))
-    interped_x_vel_function = lambda t, x, y : interpolate.RegularGridInterpolator((t_space, x_space, x_space), x_vel_values)(np.array([t, x, y]))
-    interped_y_vel_function = lambda t, x, y : interpolate.RegularGridInterpolator((t_space, x_space, x_space), y_vel_values)(np.array([t, x, y]))
 
     # Create and return plasma object
     plasma_object = plasma.tabulated_plasma(t_space, x_space, temp_values, x_vel_values, y_vel_values, name=name,
