@@ -2,7 +2,6 @@ import logging
 
 import pythia8
 import numpy as np
-import matplotlib.pyplot as plt
 
 import config
 import hard_particles
@@ -352,30 +351,3 @@ def pp_shower_hadronize(ape_event):
     return pythia_had.event
 
 
-def radial_plot(pythia_event : pythia8.Event, bottom=8, max_height=4, N=80):
-    num_particles = pythia_event.size()
-
-    weight_array = np.array([])  # Array for weight of particle
-    phi_array = np.array([])  # Array for azimuthal coordinate of particle
-    for i in range(num_particles):
-        p = pythia_event[i]
-        if p.isFinal():  # Only record final state particles
-            phi_array = np.append(phi_array, p.phi())
-            weight_array = np.append(weight_array, p.pT())
-
-
-
-    phi_bins = np.linspace(0.0, 2 * np.pi, N, endpoint=False)
-    counts, _ = np.histogram(phi_array, bins=phi_bins, weights=weight_array)
-    radii = counts
-    width = (2 * np.pi) / N
-
-    ax = plt.subplot(111, polar=True)
-    bars = ax.bar(phi_bins, radii, width=width, bottom=bottom)
-
-    # Use custom colors and opacity
-    for r, bar in zip(radii, bars):
-        bar.set_facecolor(plt.cm.jet(r / 10.))
-        bar.set_alpha(0.8)
-
-    plt.show()

@@ -12,17 +12,18 @@ import hard_particles
 import parton_evolution
 import collision
 import observables
+import plotting
 
 
 ############
 # Settings #
 ############
-analyze = True
+analyze = False
 theta_bins = np.linspace(-1, 1, 21)
 EECs = np.zeros(len(theta_bins)-1)
 
-visualize = False
-num_events = 100
+visualize = True
+num_events = 1
 
 #############################
 # Logging and File Handling #
@@ -118,8 +119,8 @@ for i in range(num_events):
     if visualize:
         logging.info('Visualizing...')
 
-        hard_event.plot_trajectories(z_axis=None, rap_max=5)
-        hard_event.plot_trajectories(z_axis="z", rap_max=5)
+        plotting.plot_trajectories(hard_event, z_axis=None, rap_max=1)
+        plotting.plot_trajectories(hard_event, z_axis="z", rap_max=5)
         # hard_event.plot_trajectories(z_axis="etas", rap_max=5)
         # plt.savefig("particle_trajectories.png", dpi=150)
 
