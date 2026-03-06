@@ -119,8 +119,9 @@ for i in range(num_events):
     if visualize:
         logging.info('Visualizing...')
 
-        plotting.plot_trajectories(hard_event, z_axis=None, rap_max=1)
-        plotting.plot_trajectories(hard_event, z_axis="z", rap_max=5)
+        # plotting.plot_trajectories(hard_event, z_axis=None, rap_max=1)
+        plotting.plot_parton_hadron(hard_event=hard_event, hadrons=hard_event_hadrons, rap_max=1.5)
+        # plotting.plot_trajectories(hard_event, z_axis="z", rap_max=5)
         # hard_event.plot_trajectories(z_axis="etas", rap_max=5)
         # plt.savefig("particle_trajectories.png", dpi=150)
 
