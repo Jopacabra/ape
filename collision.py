@@ -882,10 +882,29 @@ def generate_event(grid_max_target=config.transport.GRID_MAX_TARGET, grid_step=c
 
     logging.info('Event generation complete')
 
+    rmax = event_dataframe.iloc[0]['rmax']
+
+    # Record seed selected
+    seed = event_dataframe.iloc[0]['seed']
+
+    # Record number of participants
+    npart = event_dataframe.iloc[0]['npart']
+
+    # Record event psi_2
+    psi_2 = event_dataframe.iloc[0]['psi_2']
+
+    # Open the hydro file and create file object for manipulation.
+    plasmaFilePath = 'viscous_14_moments_evo.dat'
+    file = plasma.osu_hydro_file(file_path=plasmaFilePath, event_name='seed: {}'.format(seed))
+
+    # Create event object
+    # This asks the hydro file object to interpolate the relevant functions and pass them on to the plasma object.
+    event = plasma.plasma_event(event=file, rmax=rmax)
+
     if get_rmax is True:
-        return event_dataframe, results, rmax
+        return event, results, rmax
     else:
-        return event_dataframe, results
+        return event, results
 
 
 # Function that defines a normalized 2D PDF array for a given interpolated temperature

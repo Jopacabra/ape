@@ -2,6 +2,7 @@ import logging
 
 import pythia8
 import numpy as np
+import fastjet
 
 import config
 import hard_particles
@@ -293,7 +294,7 @@ def pp_shower_hadronize(ape_event):
     pythia_had.readString("HadronLevel:all = on")
 
     # Don't allow pi^0 to decay:
-    pythia_had.readString("111:mayDecay = off")
+    # pythia_had.readString("111:mayDecay = off")
 
     # Allow color reconnection in hadronization
     # pythia_had.readString("ColourReconnection:forceHadronLevelCR = on")
@@ -350,4 +351,34 @@ def pp_shower_hadronize(ape_event):
     logging.info('Hadronization complete.')
     return pythia_had.event
 
+def pythia_to_fastjet(pythia_had: pythia8.Event, rap_max: float=1.5, R: float=0.4, pTmin: float=0.0):
+    """
+    Function to convert a pythia event to a group of fastjet pseudojets.
 
+    Parameters
+    ----------
+    pythia_had : pythia8.Event to pull particles from
+    rap_max : maximum absolute value of rapidity to consider
+    R : Jet radius to consider
+    pTmin : minimum pT to consider
+    """
+    # Collect particles fitting cuts as fastjet.PseudoJet objects
+    particles = []
+    for p in pythia_had.particles():
+        # Filter
+        if not p.isFinal(): continue  # Only consider final state particles
+        if not p.isCharged(): continue  # Only consider charged particles
+        if np.abs(p.y()) > rap_max: continue  # Rapidity cut
+        if p.pT() < pTmin: continue  # Particle pT cut
+
+        # Append
+        particles.append(fastjet.PseudoJet(p.px(), p.py(), p.pz(), p.e()))  # px, py, pz, E
+
+    # Jet algorithm definition
+    jet_def = fastjet.JetDefinition(fastjet.antikt_algorithm, R)
+    logging.info("Jetfinding using FastJet algorithm: {}".format(jet_def))
+
+    # Find jets
+    jets = jet_def(particles)
+
+    return jets
