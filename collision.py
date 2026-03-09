@@ -18,7 +18,7 @@ import config
 from hic import initial
 from utilities import cube_random
 import plasma
-from itertools import chain, groupby, repeat
+from itertools import groupby
 
 try:
     import freestream
@@ -195,7 +195,7 @@ def runTrento(outputFile=False, randomSeed=None, numEvents=1, quiet=False, outpu
                 }
             )
         except ValueError:
-            pass
+            trentoDataFrame = pd.DataFrame({})
         if first:
             resultsDataFrame = trentoDataFrame
             first = False
@@ -299,7 +299,7 @@ def runTrentoLone(bmin=None, bmax=None, projectile1='Pb', projectile2='Pb', outp
                 }
             )
         except ValueError:
-            pass
+            trentoDataFrame = pd.DataFrame({})
 
         resultsDataFrame = trentoDataFrame
 
@@ -307,7 +307,7 @@ def runTrentoLone(bmin=None, bmax=None, projectile1='Pb', projectile2='Pb', outp
     return resultsDataFrame.drop(labels='event', axis=1), filename, subprocess
 
 # Define function to generate an averaged initial condition at the impact parameter associated with the seed
-def runTrento_Avg(directory=False, randomSeed=None, quiet=False, bmin=None, bmax=None, num_events=1000):
+def runTrento_Avg(directory, randomSeed=None, quiet=False, bmin=None, bmax=None, num_events=1000):
     logging.info('Finding impact parameter from sample event...')
     event_dataframe, trento_output_file, trento_subprocess = runTrento(outputFile=False, randomSeed=randomSeed,
                                                                        numEvents=1, quiet=quiet, bmin=bmin, bmax=bmax)
@@ -389,7 +389,7 @@ def toFsIc(initial_file='initial.hdf', quiet=False):
 
 # Function adapted from DukeQCD to run osu-hydro from the freestreamed initial conditions yielded by freestream
 # Result files SHOULD be placed in the active folder.
-def run_hydro(fs, event_size, grid_step=0.1, tau_fs=0.5, eswitch=0.110, coarse=False, hydro_args=None, quiet=False,
+def run_hydro(fs, event_size, grid_step=0.1, tau_fs=0.5, eswitch=0.110, coarse: bool | float = False, hydro_args=None, quiet=False,
               time_step=0.1, maxTime=None):
     """
     The handling of osu-hydro implemented here is adapted directly from DukeQCD's hic-eventgen package.
@@ -503,7 +503,7 @@ def run_hydro(fs, event_size, grid_step=0.1, tau_fs=0.5, eswitch=0.110, coarse=F
 # Function to generate a new HIC event and dump the files in the current working directory.
 def generate_event(grid_max_target=config.transport.GRID_MAX_TARGET, grid_step=config.transport.GRID_STEP,
                    time_step=config.transport.TIME_STEP, tau_fs=config.transport.hydro.TAU_FS,
-                   t_end=config.transport.hydro.T_SWITCH, seed=None, get_rmax=False, working_dir=None,
+                   t_end=config.transport.hydro.T_SWITCH, seed=None, working_dir=None,
                    IC_type='Duke', bmin=None, bmax=None):
 
     # the "target" grid max: the grid shall be at least as large as the target
@@ -628,14 +628,14 @@ def generate_event(grid_max_target=config.transport.GRID_MAX_TARGET, grid_step=c
         ncoll = avg_dataframe['ncoll']
 
         # Compute the normalization for the WS event from the averaged event
-        ws_norm = np.sum(ic_array) * (config.transport.GRID_STEP **2)
+        ws_norm = np.sum(ic_array) * float(config.transport.GRID_STEP **2)
 
         # Create WS initial conditions with the chosen b, norm, and reduced thickness parameter p
         arr, gs = woods_saxon_ic(b=chosen_b, norm=ws_norm, p=-1)
         ic = arr
 
         # Multiplicity
-        ws_mult = np.sum(ic) * (config.transport.GRID_STEP **2)
+        ws_mult = np.sum(ic) * float(config.transport.GRID_STEP **2)
 
         ic_object = initial.IC(arr, gs)
         e2, psi_e2 = utilities.ecc_more(ic_object, 2)
@@ -747,7 +747,7 @@ def generate_event(grid_max_target=config.transport.GRID_MAX_TARGET, grid_step=c
                 break
 
     logging.info('produced %d particles in %d samples', nparts, nsamples)
-    results['nsamples'] = nsamples
+    # results['nsamples'] = nsamples
 
     if nparts == 0:
         raise StopEvent('no particles produced')
@@ -755,9 +755,6 @@ def generate_event(grid_max_target=config.transport.GRID_MAX_TARGET, grid_step=c
     ###################################
     # Log event size and eccentricity #
     ###################################
-
-    # Add rmax to event_dataframe
-    event_dataframe['rmax'] = rmax
 
     # # try to free some memory
     # # (up to ~a few hundred MiB for ultracentral collisions)
@@ -895,16 +892,12 @@ def generate_event(grid_max_target=config.transport.GRID_MAX_TARGET, grid_step=c
 
     # Open the hydro file and create file object for manipulation.
     plasmaFilePath = 'viscous_14_moments_evo.dat'
-    file = plasma.osu_hydro_file(file_path=plasmaFilePath, event_name='seed: {}'.format(seed))
 
     # Create event object
     # This asks the hydro file object to interpolate the relevant functions and pass them on to the plasma object.
-    event = plasma.plasma_event(event=file, rmax=rmax)
+    event = plasma.plasma_event(hydro_file_path=plasmaFilePath, meta=dict(event_dataframe))
 
-    if get_rmax is True:
-        return event, results, rmax
-    else:
-        return event, results
+    return event
 
 
 # Function that defines a normalized 2D PDF array for a given interpolated temperature

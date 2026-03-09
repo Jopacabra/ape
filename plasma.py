@@ -416,7 +416,8 @@ class plasma_event:
         remain, but 'time' should be interpreted as proper time tau.
     """
 
-    # Construction inputs (either provide hydro_object, or provide the 2+1D callables directly)
+    # Construction inputs (either provide hydro_object or provide the 2+1D callables directly)
+    hydro_file_path: Optional[str] = None
     hydro_object: Optional[Any] = None
     temp_func: Optional[Callable[[np.ndarray], np.ndarray]] = None
     x_vel_func: Optional[Callable[[np.ndarray], np.ndarray]] = None
@@ -428,7 +429,9 @@ class plasma_event:
     grad_y_u_x_func: Optional[Callable[[np.ndarray], np.ndarray]] = None
     grad_y_u_y_func: Optional[Callable[[np.ndarray], np.ndarray]] = None
     name: Optional[str] = None
-    rmax: Optional[float] = None
+
+    # Optional extended physics metadata
+    meta: Optional[dict] = None
 
     # Wired-up public callables (set in __post_init__)
     temp: Callable[[Any], np.ndarray] = field(init=False)
@@ -450,13 +453,16 @@ class plasma_event:
     xmax: float = field(init=False)
     ymin: float = field(init=False)
     ymax: float = field(init=False)
-    gridstep: Optional[float] = field(init=False, default=None)
+    gridstep: float = field(init=False)
 
     def __post_init__(self) -> None:
         """
 
         """
         # Source interpolators/callables in (tau, x, y)
+        if self.hydro_file_path is not None:
+            self.hydro_object = osu_hydro_file(file_path=self.hydro_file_path)
+
         if self.hydro_object is not None:
             temp_3d = self.hydro_object.interpolate_temp_grid()
             xvel_3d = self.hydro_object.interpolate_x_vel_grid()
@@ -467,10 +473,6 @@ class plasma_event:
             grad_xuy_3d = self.hydro_object.interpolate_grad_x_u_y_grid()
             grad_yux_3d = self.hydro_object.interpolate_grad_y_u_x_grid()
             grad_yuy_3d = self.hydro_object.interpolate_grad_y_u_y_grid()
-
-            self.name = self.hydro_object.name
-            self.timestep = float(self.hydro_object.timestep)
-            self.gridstep = float(getattr(self.hydro_object, "gridstep", None))
         elif self.temp_func is not None and self.x_vel_func is not None and self.y_vel_func is not None:
             temp_3d = self.temp_func
             xvel_3d = self.x_vel_func
@@ -481,15 +483,6 @@ class plasma_event:
             grad_xuy_3d = self.grad_x_u_y_func
             grad_yux_3d = self.grad_y_u_x_func
             grad_yuy_3d = self.grad_y_u_y_func
-
-            # Attempt to infer domain from interpolator-like objects
-            try:
-                grid = getattr(temp_3d, "grid")
-                self.timestep = float(grid[0][-1] - grid[0][-2])
-            except Exception as e:
-                logging.exception(e)
-                logging.warning('No valid parameters for event. Setting to defaults.')
-                self.timestep = 0.1
         else:
             raise ValueError("Plasma instantiation failed: provide hydro_object or (temp_func, x_vel_func, y_vel_func).")
 
@@ -508,6 +501,8 @@ class plasma_event:
         # Set domains from the underlying interpolator grid when available
         try:
             grid = getattr(temp_3d, "grid")
+            self.timestep = float(grid[0][-1] - grid[0][-2])  # Read last step size in time dimension (first)
+            self.gridstep = float(grid[1][-1] - grid[1][-2])  # Read last step size in x-space dimension (second)
             self.t0 = float(np.amin(grid[0]))
             self.tf = float(np.amax(grid[0]))
             self.xmin = float(np.amin(grid[1]))
@@ -904,7 +899,6 @@ class plasma_event:
 def tabulated_plasma(t_space, x_space, temp_values, x_vel_values, y_vel_values, name=None, return_grids=False):
     logging.debug('WARNING: Gradients of temp and flow not verified')
     grid_step = float(x_space[-1] - x_space[-2])
-    rmax = x_space[-1]
 
     # Compute gradients
     temp_grad_x_values = np.gradient(temp_values, grid_step, axis=1)
@@ -939,7 +933,7 @@ def tabulated_plasma(t_space, x_space, temp_values, x_vel_values, y_vel_values, 
                                  grad_y_u_x_func=interped_grad_y_u_x,
                                  grad_x_u_y_func=interped_grad_x_u_y,
                                  grad_y_u_y_func=interped_grad_y_u_y,
-                                 name=name, rmax=rmax)
+                                 name=name)
 
     # Return the grids of evaluated points, if requested.
     if return_grids:
@@ -950,13 +944,13 @@ def tabulated_plasma(t_space, x_space, temp_values, x_vel_values, y_vel_values, 
 # Takes callable functions that take parameters (t, x, y) for the temperature and velocities
 # and returns plasma_event objects generated from them.
 def functional_plasma(temp_func=None, x_vel_func=None, y_vel_func=None, name=None,
-                      resolution=10, rmax=15, time=None, return_grids=False, tau0=0.5):
+                      resolution=10, xmax=15, time=None, return_grids=False, tau0=0.5):
     # Define grid time and space domains
     if time is None:
-        t_space = np.linspace(tau0, 2 * rmax, int((rmax + rmax) * resolution))
+        t_space = np.linspace(tau0, 2 * xmax, int((xmax + xmax) * resolution))
     else:
-        t_space = np.linspace(tau0, time, int((rmax + rmax) * resolution))
-    x_space = np.linspace((0 - rmax), rmax, int((rmax + rmax) * resolution))
+        t_space = np.linspace(tau0, time, int((xmax + xmax) * resolution))
+    x_space = np.linspace((0 - xmax), xmax, int((xmax + xmax) * resolution))
 
 
     # Create meshgrid for function evaluation

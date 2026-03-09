@@ -5,7 +5,6 @@ import timeit
 
 import numpy as np
 import matplotlib.pyplot as plt
-from jupyter_server.auth import passwd
 
 import pythia
 import plasma
@@ -25,11 +24,11 @@ theta_bins = np.linspace(-1, 1, 21)
 EECs = np.zeros(len(theta_bins)-1)
 
 # Visualization options
-visualize = False
+visualize = True
 
 # Event options
 num_hard_events = 1
-event_type = "load"
+event_type = "Duke"
 plasma_file_path = "stored_events/Duke_avg/event_0/viscous_14_moments_evo.dat"
 
 
@@ -80,13 +79,17 @@ elif event_type == "Duke":
 
     # Run event generation using config setttings
     # Note that we need write permissions in the working directory
-    plasma_object, hrg_results, rmax = collision.generate_event(working_dir=None, IC_type="Duke")
+    plasma_object = collision.generate_event(working_dir=None, IC_type="Duke")
 
 # Load a saved Duke event
 elif event_type == "load":
     logging.info("Loading Duke Average Plasma...")
     plasma_file = plasma.osu_hydro_file(plasma_file_path)
     plasma_object = plasma.plasma_event(hydro_object=plasma_file)
+
+else:
+    logging.error("Invalid event type.")
+    raise ValueError("Invalid event type.")
 
 logging.info('Plasma created.')
 
