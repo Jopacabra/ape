@@ -246,7 +246,7 @@ class Particle:
         betax = float(self.px / mT)  # Unitless
         betay = float(self.py / mT)  # Unitless
         if np.abs(self.rap - self.etas) > 700:  # Protects against overflow at large values of etas
-            betaetas = 1  # Units: fm^-1
+            betaetas = np.sinh(np.sign(self.rap - self.etas) * 700) / self.tau   # Units: fm^-1
         else:
             betaetas = float(np.sinh(self.rap - self.etas) / self.tau)  # Units: fm^-1
 
