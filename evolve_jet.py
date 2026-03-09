@@ -1,11 +1,13 @@
 
 import logging
 import sys
+import os
 import timeit
 
 import numpy as np
 import matplotlib.pyplot as plt
 
+import config
 import pythia
 import plasma
 import hard_particles
@@ -35,6 +37,13 @@ plasma_file_path = "stored_events/Duke_avg/event_0/viscous_14_moments_evo.dat"
 #############################
 # Logging and File Handling #
 #############################
+# File paths
+# Set running location as current directory - whatever the pwd was when running the script
+project_path = os.path.dirname(os.path.realpath(__file__))  # Gets directory the EBE.py script is located in
+home_path = os.getcwd()  # Gets working directory when script was run - results directory will be placed here
+results_path = home_path + "/results"  # Absolute path of dir where results files will live
+os.makedirs(results_path, exist_ok=True)  # Make results directory
+
 # Clear any existing logging handlers
 for handler in logging.root.handlers[:]:
     logging.root.removeHandler(handler)
@@ -79,7 +88,7 @@ elif event_type == "Duke":
 
     # Run event generation using config setttings
     # Note that we need write permissions in the working directory
-    plasma_object = collision.generate_event(working_dir=None, IC_type="Duke")
+    plasma_object = collision.generate_event(working_dir=results_path, IC_type="Duke")
 
 # Load a saved Duke event
 elif event_type == "load":
@@ -111,10 +120,21 @@ try:
         """
         # Production point
         logging.info('Getting hard scattering...')
-        tau_0 = 0.01
-        x_0 = 1
-        y_0 = 1
-        etas_0 = 0.0
+        if config.mode.VARY_POINT:
+            logging.info('Sampling hard scattering point...')
+            point = collision.generate_jet_seed_point(plasma_object)
+            tau_0 = config.jet.TAU_PROD
+            x_0 = point[0]
+            y_0 = point[1]
+            etas_0 = 0.0
+
+        else:
+            logging.info('Using central hard scattering point...')
+            tau_0 = config.jet.TAU_PROD
+            x_0 = 1
+            y_0 = 1
+            etas_0 = 0.0
+        logging.info(f"Embedding hard scattering at ({tau_0}, {x_0}, {y_0}, {etas_0})")
         hard_event = pythia.scattering(tau=tau_0, x=x_0, y=y_0, etas=etas_0)
         num_hard_particles = len(hard_event.particles)
         logging.info('Hard scattering done.')

@@ -1,11 +1,15 @@
+hic
 numpy
-scipy
-cython
-h5py
-pandas
-pyyaml
-jupyter
+setuptools
+frzout
 matplotlib
-pythia8  # conda-forge
-lhapdf  # conda-forge
-fastjet  # conda-forge
+scipy
+yaml
+pyyaml
+pandas
+pythia8
+fastjet
+freestream
+h5py
+xarray
+lhapdf

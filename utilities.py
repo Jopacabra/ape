@@ -16,7 +16,7 @@ def run_cmd(*args, quiet=False):
     Run and log a Subprocess.
     """
     cmd = ' '.join(args)
-    logging.info('running command: {}'.format(cmd))
+    logging.info('running shell command:\n{}'.format(cmd))
     processName = str(args[0])
 
     try:

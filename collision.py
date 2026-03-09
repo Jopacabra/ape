@@ -13,10 +13,9 @@ import math
 import os
 import shutil
 import logging
-import utilities
 import config
 from hic import initial
-from utilities import cube_random
+import utilities
 import plasma
 from itertools import groupby
 
@@ -414,7 +413,7 @@ def run_hydro(fs, event_size, grid_step=0.1, tau_fs=0.5, eswitch=0.110, coarse: 
     if not quiet:
         logging.info('format: ITime, Time, Max Energy Density, Max Temp, iRegulateCounter, iRegulateCounterBulkPi')
 
-    surface = np.fromfile('stored_events/Duke_avg/event_0/surface.dat', dtype='f8').reshape(-1, 16)
+    surface = np.fromfile('surface.dat', dtype='f8').reshape(-1, 16)
 
     # end event if the surface is empty -- this occurs in ultra-peripheral
     # events where the initial condition doesn't exceed Tswitch
@@ -440,6 +439,10 @@ def generate_event(grid_max_target=config.transport.GRID_MAX_TARGET, grid_step=c
                    time_step=config.transport.TIME_STEP, tau_fs=config.transport.hydro.TAU_FS,
                    t_end=config.transport.hydro.T_SWITCH, seed=None, working_dir=None,
                    IC_type='Duke', bmin=None, bmax=None):
+
+    if working_dir is not None:
+        og_dir = os.getcwd()
+        os.chdir(working_dir)
 
     # the "target" grid max: the grid shall be at least as large as the target
     # By defualt grid_max_target = config.transport.GRID_MAX_TARGET
@@ -669,7 +672,7 @@ def generate_event(grid_max_target=config.transport.GRID_MAX_TARGET, grid_step=c
     logging.info('sampling surface with frzout')
 
     # sample particles and write to file
-    with open('stored_events/Duke_avg/event_0/particles_in.dat', 'w') as f:
+    with open('particles_in.dat', 'w') as f:
         for nsamples in range(1, maxsamples + 1):
             parts = frzout.sample(event_surface, hrg)
             if parts.size == 0:
@@ -700,14 +703,14 @@ def generate_event(grid_max_target=config.transport.GRID_MAX_TARGET, grid_step=c
     #########
 
     # hadronic afterburner
-    utilities.run_cmd(*['afterburner', 'particles_in.dat', 'particles_out.dat'], quiet=False)
+    utilities.run_cmd(*['afterburner', 'particles_in.dat', 'particles_out.dat'], quiet=True)
 
     ####################################
     # Post-Hadronic Transport Analysis #
     ####################################
 
     # read final particle data
-    with open('stored_events/Duke_avg/event_0/particles_out.dat', 'rb') as f:
+    with open('particles_out.dat', 'rb') as f:
 
         # partition UrQMD file into oversamples
         groups = groupby(f, key=lambda l: l.startswith(b'#'))
@@ -720,7 +723,12 @@ def generate_event(grid_max_target=config.transport.GRID_MAX_TARGET, grid_step=c
             for l in sample
         )
 
-        parts = np.fromiter(parts_iter, dtype=parts_dtype)
+        try:
+            parts = np.fromiter(parts_iter, dtype=parts_dtype)
+        except ValueError as e:
+            logging.exception(e)
+            raise StopEvent('No particles in UrQMD output.')
+
 
     # # save raw particle data (optional)
     # # save event to hdf5 data set
@@ -814,17 +822,6 @@ def generate_event(grid_max_target=config.transport.GRID_MAX_TARGET, grid_step=c
 
     logging.info('Event generation complete')
 
-    rmax = event_dataframe.iloc[0]['rmax']
-
-    # Record seed selected
-    seed = event_dataframe.iloc[0]['seed']
-
-    # Record number of participants
-    npart = event_dataframe.iloc[0]['npart']
-
-    # Record event psi_2
-    psi_2 = event_dataframe.iloc[0]['psi_2']
-
     # Open the hydro file and create file object for manipulation.
     plasmaFilePath = 'viscous_14_moments_evo.dat'
 
@@ -832,117 +829,10 @@ def generate_event(grid_max_target=config.transport.GRID_MAX_TARGET, grid_step=c
     # This asks the hydro file object to interpolate the relevant functions and pass them on to the plasma object.
     event = plasma.plasma_event(hydro_file_path=plasmaFilePath, meta=dict(event_dataframe))
 
+    # Go home
+    os.chdir(og_dir)
+
     return event
-
-
-# Function that defines a normalized 2D PDF array for a given interpolated temperature
-# function's 0.5 fs (or given) timestep.
-def jetprodPDF(temp_func, resolution=100, plot=False, initialTime=0.5):
-    # Find spatial bounds of grid
-    gridMin = np.amin(temp_func.grid[1])
-    gridMax = np.amax(temp_func.grid[1])
-
-    # Get initial timestep temperature grid with given resolution
-
-    # Adapted from grid_reader.qgp_plot()
-    #
-    # Domains of physical positions to plot at (in fm)
-    # These limits of the linear space obtain the largest and smallest input value for
-    # the interpolating function's position inputs.
-    x_space = np.linspace(gridMin, gridMax, resolution)
-
-    # Create arrays of each coordinate
-    # E.g. Here x_coords is a 2D array showing the x coordinates of each cell
-    # We necessarily must set time equal to a constant to plot in 2D.
-    x_coords, y_coords = np.meshgrid(x_space, x_space, indexing='ij')
-    # t_coords set to be an array matching the length of x_coords full of constant time
-    # Note that we select "initial time" as 0.5 fs by default
-    t_coords = np.full_like(x_coords, initialTime)
-
-    # Put coordinates together into ordered pairs.
-    points = np.transpose(np.array([t_coords, x_coords, y_coords]), (2, 1, 0))
-
-    # Calculate temperatures
-    initialGrid = temp_func(points)
-
-    # Raise temps to 6th power
-    raisedGrid = initialGrid ** 6
-
-    # Rescale grid by adjusting values to between 0 and 1.
-    minTemp = np.amin(raisedGrid)
-    maxTemp = np.amax(raisedGrid)
-    rescaledRaisedGrid = (raisedGrid - minTemp) / (maxTemp - minTemp)
-
-    # Normalize the 2D array of initial temperatures
-    normOfRaisedGrid = np.linalg.norm(raisedGrid, ord='nuc')
-    normedRaisedGrid = raisedGrid / normOfRaisedGrid
-
-    if plot:
-        # Plot the normalized grid
-        temps = plt.contourf(x_space, x_space, normedRaisedGrid, cmap='plasma')
-        plt.colorbar(temps)
-        plt.show()
-    else:
-        pass
-
-    # return normedRaisedGrid
-    return normedRaisedGrid
-
-
-# Function that defines a normalized 2D PDF array for a given interpolated temperature
-# function's 0.5 fs (or given) timestep.
-def jetProdPDF_Function(temp_func, resolution=100, plot=False, initialTime=0.5):
-    # Find spatial bounds of grid
-    gridMin = np.amin(temp_func.grid[1])
-    gridMax = np.amax(temp_func.grid[1])
-
-    # Get initial timestep temperature grid with given resolution
-
-    # Adapted from grid_reader.qgp_plot()
-    #
-    # Domains of physical positions to plot at (in fm)
-    # These limits of the linear space obtain the largest and smallest input value for
-    # the interpolating function's position inputs.
-    x_space = np.linspace(gridMin, gridMax, resolution)
-
-    # Create arrays of each coordinate
-    # E.g. Here x_coords is a 2D array showing the x coordinates of each cell
-    # We necessarily must set time equal to a constant to plot in 2D.
-    x_coords, y_coords = np.meshgrid(x_space, x_space, indexing='ij')
-    # t_coords set to be an array matching the length of x_coords full of constant time
-    # Note that we select "initial time" as 0.5 fs by default
-    t_coords = np.full_like(x_coords, initialTime)
-
-    # Put coordinates together into ordered pairs.
-    points = np.transpose(np.array([t_coords, x_coords, y_coords]), (2, 1, 0))
-
-    # Calculate temperatures
-    initialGrid = temp_func(points)
-
-    # Raise temps to 6th power
-    raisedGrid = np.power(initialGrid, 6)
-    Raised_Temp_Func = temp_func ** 6
-
-    # Rescale grid by adjusting values to between 0 and 1.
-    # minTemp = np.amin(raisedGrid)
-    # maxTemp = np.amax(raisedGrid)
-    # rescaledRaisedGrid = (raisedGrid - minTemp)/(maxTemp - minTemp)
-
-    # Normalize the function of temperatures
-    normOfRaisedGrid = np.linalg.norm(raisedGrid, ord='nuc')
-
-    NormedRaised_Temp_Func = Raised_Temp_Func / normOfRaisedGrid
-
-    if plot:
-        pass
-        # Plot the normalized grid
-        # temps = plt.contourf(x_space, x_space, normedRaisedGrid, cmap='plasma')
-        # plt.colorbar(temps)
-        # plt.show()
-    else:
-        pass
-
-    return NormedRaised_Temp_Func
 
 
 # Function to rejection sample a given interpolated temperature function^6 for jet production.
@@ -972,7 +862,7 @@ def temp_6th_sample(event, maxAttempts=5, time='i', batch=1000):
     while attempt < maxAttempts:
         # Generate random point in 3D box of l = w = gridWidth and height maximum temp.^6
         # Origin at center of bottom of box
-        pointArray = cube_random(num = batch, boxSize=gridWidth, maxProb=maxTemp ** 6)
+        pointArray = utilities.cube_random(num = batch, boxSize=gridWidth, maxProb=maxTemp ** 6)
 
         for point in pointArray:
             targetTemp = temp_func(np.array([time, point[0], point[1]]))**6
@@ -987,8 +877,7 @@ def temp_6th_sample(event, maxAttempts=5, time='i', batch=1000):
                 return point[0:2]
         logging.info("Jet Production Sampling Attempt: " + str(attempt) + " failed.")
         attempt += 1
-    logging.info("Catastrophic error in jet production point sampling!")
-    logging.info("AHHHHHHHHHHHHHHH!!!!!!!!!!!")
+    logging.error("Error in jet production point sampling!")
     return np.array([0,0,0])
 
 
@@ -1003,6 +892,7 @@ def generate_jet_seed_point(event, num=1):
         else:
             pointArray = np.vstack((pointArray, newPoint))
     return pointArray
+
 
 # Function to create Woods-Saxon distribution initial conditions
 def woods_saxon_ic(b, A=208, R=6.62, a=0.546, p=-1, norm=1,
