@@ -22,7 +22,7 @@ transport:  # Parameters for the hybrid transport medium model - freestreaming, 
     TAU_FS: 0.37  # [fm] freestreaming time, also thermalization time. Default 0.37 fm.
     GRID_STEP: 0.1  # [fm] Hydro / Trento grid step in fm. Default 0.15*NUCLEON_WIDTH from DukeQCD BA
     TIME_STEP: 0.05  # [fm] Hydro / Trento time step in fm. Default 0.25*GRID_STEP fm from DukeQCD BA
-    GRID_MAX_TARGET: 15  # [fm] Maximum hydro grid width.
+    GRID_MAX_TARGET: 10  # [fm] Maximum hydro grid width.
     T_SWITCH: 0.151  # [GeV] Minimum temperature in GeV of all cells at which to cut off hydro evolution.
     ETAS_MIN: 0.11  # eta/s at T0
     ETAS_SLOPE: 1.6  # [GeV^-1] slope of (eta/s)(T) above T0
@@ -31,7 +31,7 @@ transport:  # Parameters for the hybrid transport medium model - freestreaming, 
     ZETAS_WIDTH: 0.024  # [GeV] width of (zeta/s)(T)
     ZETAS_T0: 0.175  # [GeV] peak location of Cauchy (zeta/s)(T)
 jet:  # Parameters for the jet production processes to be run
-    TAU_PROD: 0  # Choose when the hard process occurs -- hard partons propagate without interaction until "TAU_FS".
+    TAU_PROD: 0.01  # Choose when the hard process occurs -- hard partons freestream until "TAU_FS" -- Must be > 0
     PTHATMIN: 1  # [GeV] Minimum pTHat for jet production hard scatterings ~ min initial pT of jets
     PTHATMAX: 100  # [GeV] Maximum pTHat for jet production hard scatterings ~ max initial pT of jets
     SHOWER: True  # If True, take Pythia vacuum jets. If False, take only hard scattering process particles.
@@ -43,6 +43,8 @@ jet:  # Parameters for the jet production processes to be run
     PT_BIN: 1 # pT bin width in GeV for hard observables and histograms out
     TYPE: "dijet"  # Type of hard processes to run -- "dijet" or "gamma-jet"
     RAP_MAX: 0.5  # Maximum absolute value of rapidity for hard scattering plane.
+    RAP_MAX_EVOLVE: 2.5  # Maximum absolute value of initial rapidity for which particles are evolved in the medium.
+    EMIN: 3.0  # Minimum energy for the particle to be evolved in the medium. Particle gets a random thermal final momentum.
 global_constants:  # Physical constants to be set by the user.
     # Coupling is set by case selection in ebe scripts. Uses G_RAD by default.
     G_RAD: 2.1  # Coupling constant for IN-MEDIUM strong interaction w/ radiative energy loss -- if num GLV, need table!

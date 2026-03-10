@@ -98,6 +98,8 @@ class jet:
     PT_BIN = float(cfg['jet']['PT_BIN'])
     TYPE = str(cfg['jet']['TYPE'])
     RAP_MAX = float(cfg['jet']['RAP_MAX'])
+    RAP_MAX_EVOLVE = float(cfg['jet']['RAP_MAX_EVOLVE'])
+    EMIN = float(cfg['jet']['EMIN'])
 
 
 # Global constants

@@ -8,6 +8,9 @@ import config
 from dataclasses import dataclass, field
 from typing import Any, Iterable, Iterator, Optional, Sequence, TypeVar, Generic
 
+class StopEvolve(Exception):
+    """ Raise to end parton evolution early. """
+
 # Species table
 # Masses in GeV. PDG IDs follow standard conventions.
 # WARNING!!! The masses for diquarks are just the nominal mass in GeV from Pythia's data tables.
@@ -130,7 +133,7 @@ class Particle:
         except Exception as e:
             # logging.exception(e)
             logging.debug(e)
-            logging.debug(f"Missing m, using m0")
+            logging.debug(f"Missing m for id={self.id}, using m0")
             self.m = None
         
         # set default tau to tau_fs, if none provided
@@ -189,7 +192,7 @@ class Particle:
             return float(np.hypot(self.m, self.pT))
         except Exception as e:
             # logging.exception(e)
-            logging.debug("Missing m, computing mT w/ m0.")
+            # logging.debug(f"Missing m for id={self.id}, computing mT w/ m0.")
             return self.mT0
 
 
@@ -204,7 +207,7 @@ class Particle:
             return float(np.sqrt(self.pT * self.pT + self.pz * self.pz + self.m * self.m))
         except Exception as e:
             # logging.exception(e)
-            logging.debug("Missing m, computing rapidity w/ m0.")
+            # logging.debug(f"Missing m for id={self.id}, computing rapidity w/ m0.")
             return self.E0
 
     @property
@@ -229,10 +232,6 @@ class Particle:
     def prop(self, dtau: float = 0.0) -> None:
         """
         Free-streaming update in Milne coordinates.
-
-        Notes:
-          - Uses v_x = p_x / mT, v_y = p_y / mT (legacy convention).
-          - eta_s update uses: d(eta_s)/d(tau) = sinh(y - eta_s) / tau
         """
         dtau = float(dtau)
         if dtau == 0.0:
@@ -243,34 +242,25 @@ class Particle:
 
         # Compute relativistic velocities
         mT = self.mT
-        betax = float(self.px / mT)  # Unitless
-        betay = float(self.py / mT)  # Unitless
-        if np.abs(self.rap - self.etas) > 700:  # Protects against overflow at large values of etas
-            betaetas = np.sinh(np.sign(self.rap - self.etas) * 700) / self.tau   # Units: fm^-1
-        else:
-            betaetas = float(np.sinh(self.rap - self.etas) / self.tau)  # Units: fm^-1
+        rap_diff = self.etas - self.rap
+        betatau = float(1.0)  # Unitless
+        betax = float(self.px / (np.cosh(rap_diff) * mT))  # Unitless
+        betay = float(self.py / (np.cosh(rap_diff) * mT))  # Unitless
+        betaetas = float(-np.tanh(rap_diff) / self.tau)  # Units: fm^-1
 
         # Update spacetime state variables
+        self.tau = float(self.tau + betatau * dtau)  # Units: [fm]
         self.x = float(self.x + betax * dtau)  # Units: [fm]
         self.y = float(self.y + betay * dtau)  # Units: [fm]
         self.etas = float(self.etas + betaetas * dtau)  # Unitless: [fm^-1] * [fm] // unitless hyperbolic angle thing
-        self.tau = float(self.tau + dtau)  # Units: [fm]
 
-        # If eta_s overshoots rapidity, saturate to rapidity. Prevents turn-arounds when overshooting in a step.
-        if np.abs(self.etas) > np.abs(self.rap):
-            self.etas = self.rap
-
-        # if math.copysign(1, betaetas) != math.copysign(1, self.etas):
-        #     print("Problem Start")
-        #     print(betaetas)
-        #     print(self.etas)
-        #     print(self.rap)
-        #     print((self.rap - self.etas))
-        #     print(np.sinh(self.rap - self.etas))
-        #     print(np.sinh(self.rap - self.etas) / self.tau)
-        #     print("Problem End")
-
-
+        # if np.abs(self.etas) > config.jet.RAP_MAX_EVOLVE:
+        #     # self.etas = np.sign(self.etas) * config.jet.RAP_MAX_EVOLVE
+        #     # self._log_state()
+        #     raise StopEvolve(f"|etas|={np.abs(self.etas)} > RAP_MAX_EVOLVE={config.jet.RAP_MAX_EVOLVE}")
+        # elif np.abs(self.rap) > config.jet.RAP_MAX_EVOLVE:
+        #     # self._log_state()
+        #     raise StopEvolve(f"|rap|={np.abs(self.rap)} > RAP_MAX_EVOLVE={config.jet.RAP_MAX_EVOLVE}")
 
         # Log state to history
         self._log_state()
@@ -394,6 +384,49 @@ class Particle:
         self.px = float(self.px + delta.dpx)
         self.py = float(self.py + delta.dpy)
         self.pz = float(self.pz + delta.dpz)
+
+    def thermal_sample(self):
+        """
+        Sample a Fermi-Dirac (fermions) or Bose-Einstein (bosons) distribution at the freezeout temperature for some
+        3 momentum, given pid of parton. Uses rejection sample.
+        """
+        # Get random points
+        rng = np.random.default_rng()
+        for j in range(100):
+            num_samples = 1000
+            E_samps = rng.uniform(0, 1, num_samples)  # Random energies, maximum 1 GeV.
+            P_samps = rng.uniform(0, 1, num_samples)
+
+            # Compute distribution values for energy values
+            if self.isq:  # Use fermion dist. -- Fermi-Dirac distribution
+                dist = (1 / (np.exp(-E_samps / config.transport.hydro.T_SWITCH) + 1))
+            elif self.isg or self.isEWB:  # Use boson dist. -- Bose-Einstein distribution
+                dist = (1 / (np.exp(-E_samps / config.transport.hydro.T_SWITCH) - 1))
+            else:
+                raise ValueError(f"Unknown parton statistics {self.id}")
+            dist = dist / np.amax(dist)  # Normalize largest value to 1.
+
+            i = 0
+            for i in range(num_samples):
+                if P_samps[i] <= dist[i]:  # Accept below or at curve
+                    energy = E_samps[i]
+                    break
+                i += 1
+
+            # Get num_points random unit 3-vectors for the direction
+            rng = np.random.default_rng()
+            new_p = rng.uniform(-1, 1, 3)  # Sample a random direction
+            new_p = new_p / np.linalg.norm(new_p)  # Normalize
+            new_p = np.sqrt(energy**2 - (self.m**2)) * new_p  # Scale momenta using appropriate mass on-shell condition
+
+            # Set momentum to new momentum.
+            self.px = new_p[0]
+            self.py = new_p[1]
+            self.pz = new_p[2]
+
+            return True
+
+        raise Exception("Failed to sample particle momentum.")
 
     ###########################
     # Convenient constructors #
