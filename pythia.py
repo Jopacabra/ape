@@ -299,11 +299,40 @@ def pp_shower_hadronize(ape_event):
     # Allow color reconnection in hadronization
     # pythia_had.readString("ColourReconnection:forceHadronLevelCR = on")
 
-    # Turn off event checks that enforce conservation of momentum and such in the event
+    # Event checks that enforce conservation of momentum and such in the event
     pythia_had.readString("Check:event = off")
+
+    # Event checks that ensure mothers and daughters match
+    pythia_had.readString("Check:history = off")
 
     # Tell Pythia to "do the thing" (run with the configurations above)
     pythia_had.init()
+
+    #############################
+    # Assemble the event record #
+    #############################
+    # Clear the event
+    pythia_had.event.reset()
+
+    # Add in edited particles -- note that this requires color connections already handled elsewhere.
+    for p in ape_event.particles:
+        scalein = 0.0 if p.scalein is None else float(p.scalein)
+
+        pythia_had.event.append(
+            id=int(p.id),
+            status=int(23),  # typical: outgoing parton for hadronization input
+            col=int(p.col),
+            acol=int(p.acol),
+            px=float(p.px),
+            py=float(p.py),
+            pz=float(p.pz),
+            e=float(p.E0),  # uses on-shell energy with Pythia mass
+            m=float(p.m0),  # uses Pythia's masses
+            scaleIn=scalein,
+        )
+
+    # Save the event for repeated hadronization
+    saved_event = pythia_had.event
 
     #################################
     # Run the hadronization routine #
@@ -312,35 +341,17 @@ def pp_shower_hadronize(ape_event):
     total_had_runs = 0
     while total_had_runs < max_had_runs:
 
-        # Clear the event
-        pythia_had.event.reset()
-
-        # Add in edited particles -- note that this requires color connections already handled elsewhere.
-        for p in ape_event.particles:
-            scalein = 0.0 if p.scalein is None else float(p.scalein)
-
-            pythia_had.event.append(
-                id=int(p.id),
-                status=int(23),  # typical: outgoing parton for hadronization input
-                col=int(p.col),
-                acol=int(p.acol),
-                px=float(p.px),
-                py=float(p.py),
-                pz=float(p.pz),
-                e=float(p.E0),     # uses on-shell energy with Pythia mass
-                m=float(p.m0),     # uses Pythia's masses
-                scaleIn=scalein,
-            )
+        # Reset to saved event state
+        pythia_had.event = saved_event
 
         # List particles for debug
         # pythia_had.event.list()
 
-        # hadronize - restart if event checks fail
+        # hadronize - restart if remaining event checks fail
         event_success = pythia_had.next()
         if not event_success:
             total_had_runs += 1  # Add a total hadronization
             continue
-        success_had_run = True
         total_had_runs += 1  # Add a total hadronization
         break
 
