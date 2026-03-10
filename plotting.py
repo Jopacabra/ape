@@ -6,7 +6,7 @@ from matplotlib import pyplot as plt
 import hard_particles
 
 
-def plot_trajectories(hard_event : hard_particles.EventRecord, *, z_axis: str = "etas", color_by: str | None = "id", rap_max=1.5) -> None:
+def plot_trajectories(hard_event : hard_particles.EventRecord, *, z_axis: str = "etas", color_by: str | None = "id", rap_max=1.0) -> None:
     """
     2D or 3D line plot of all Particle trajectories in this EventRecord.
 
@@ -44,7 +44,7 @@ def plot_trajectories(hard_event : hard_particles.EventRecord, *, z_axis: str = 
     if color_by == "id":
         ids = np.array([])
         for p in hard_event.particles:
-            if np.abs(p.rap) > rap_max:
+            if rap_max is not None and np.abs(p.rap) > rap_max:
                 continue
             ids = np.append(ids, p.id)
         uniq_ids = np.unique(ids)
@@ -60,7 +60,7 @@ def plot_trajectories(hard_event : hard_particles.EventRecord, *, z_axis: str = 
         if not hist:
             continue
 
-        if np.abs(p.rap) > rap_max:
+        if rap_max is not None and np.abs(p.rap) > rap_max:
             continue
 
         traj = np.asarray(hist, dtype=float)
@@ -163,7 +163,7 @@ def azimuthal_plot_pythia(pythia_event : pythia8.Event, bottom=8, max_height=4, 
     return axis
 
 
-def plot_parton_hadron(hard_event : hard_particles.EventRecord, hadrons : pythia8.Event, rap_max=1.5, N=80, max_height=3):
+def plot_parton_hadron(hard_event : hard_particles.EventRecord, hadrons : pythia8.Event, rap_max=1.0, N=80, max_height=3):
     # Create figure
     fig = plt.figure(figsize=(7, 7))
 
@@ -184,7 +184,7 @@ def plot_parton_hadron(hard_event : hard_particles.EventRecord, hadrons : pythia
         # Categorical coloring by particle id
         ids = np.array([])
         for p in hard_event.particles:
-            if np.abs(p.rap) > rap_max:
+            if rap_max is not None and np.abs(p.rap) > rap_max:
                 continue
             ids = np.append(ids, p.id)
         uniq_ids = np.unique(ids)
@@ -199,7 +199,7 @@ def plot_parton_hadron(hard_event : hard_particles.EventRecord, hadrons : pythia
             if not hist:
                 continue
 
-            if np.abs(p.rap) > rap_max:
+            if rap_max is not None and np.abs(p.rap) > rap_max:
                 continue
 
             traj = np.asarray(hist, dtype=float)
