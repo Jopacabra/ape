@@ -113,17 +113,27 @@ def drift_integrand(T, u_perp, u_par, E, hard_pid=21):
 
 
 # Integrand for energy loss
-def rad_energy_loss_integrand(T, tau, E, u_par=0.0, tau_0=0.0, hard_pid=21, model='GLV'):
+def rad_energy_integrand(T, L, E, u_par=0.0, hard_pid=21, model='GLV'):
+    """
+    Compute the energy radiated in gluon spectrum per unit length of this step.
+
+    Params:
+        T : Temperature of plasma seen in this step
+        L : The total pathlength traveled in plasma of this particle. Note that this should be total pathlength minus pathlength in fs.
+        u_par : The parallel flow velocity of the medium
+        hard_pid : The pdg hard parton id of the particle
+        model : The energy loss model to use. Options are 'GLV' and 'BBMG'
+    """
     FmGeV = 1/0.19732687
 
     # Average medium parameters
     mu = mu_DeBye(T)
     inv_lambda_val = inv_lambda(T, hard_pid=hard_pid, soft_pid=None)
 
-    # Select energy loss model and return appropriate energy loss
+    # Select radiation energy model and return appropriate energy per unit pathlength
     if model == 'BBMG':
         # Note that we apply FERMI GeV twice... Once for the t factor, once for the (int dt).
-        return (config.jet.K_BBMG * (-1) * ((FmGeV) ** 2) * (tau - tau_0) * (T ** 3)
+        return (config.jet.K_BBMG * ((FmGeV) ** 2) * L * (T ** 3)
                 * zeta(q=-1) * (1 / np.sqrt(1 - (u_par ** 2)))
                 * (1))
     elif model == 'GLV':
@@ -144,9 +154,9 @@ def rad_energy_loss_integrand(T, tau, E, u_par=0.0, tau_0=0.0, hard_pid=21, mode
         # Set alpha_s
         alphas = (config.constants.G**2) / (4*np.pi)
 
-        # Calculate and return energy loss per unit length of this step.
-        return (-1)*(CR * alphas / 2) * (((FmGeV) ** 2)
-                                         * (tau - tau_0)
+        # Calculate and return energy radiated per unit length of this step.
+        return (CR * alphas / 2) * (((FmGeV) ** 2)
+                                         * L
                                          * (mu**2)
                                          * inv_lambda_val
                                          * np.log(E / mu))
@@ -200,10 +210,15 @@ def collisional_delta(particle: hard_particles.Particle, medium: plasma.plasma_e
     uperp = utilities.perp_vec(a=u, b=p)
     upar = utilities.par_vec(a=u, b=p)
 
+    # Get pathlength traveled
+    delta_t, delta_x, delta_y, delta_z = particle.next_pathlength(dtau, cart=True)
+    pathlength = np.sqrt(delta_x**2 + delta_y**2 + delta_z**2)
+
     # Compute flow-induced broadening, add to momentum transfer.
     drift = drift_integrand(T=temp, u_perp=np.linalg.norm(uperp), u_par=np.linalg.norm(upar),
-                                               E=particle.E, hard_pid=particle.id) * dtau
-    drift_vec = drift * uperp / np.linalg.norm(uperp)
+                                               E=particle.E, hard_pid=particle.id) * pathlength
+    uperp_hat = uperp / np.linalg.norm(uperp)  # Unit vector in direction of u_perp
+    drift_vec = drift * uperp_hat
 
     dpx += float(drift_vec[0])
     dpy += float(drift_vec[1])
@@ -225,13 +240,29 @@ def rad_delta(particle: hard_particles.Particle, medium: plasma.plasma_event, dt
     dpz = 0
 
     # Gather particle and medium properties.
+    p = particle.p3
     point = particle.coords
     temp = medium.temp(point)
     if temp < config.jet.T_HRG:  # Cancel evolution if we exit the plasma phase
         raise HadronGas()
 
-    # Compute radiative longitudinal energy loss
-    dpz += float(rad_energy_loss_integrand(temp, particle.tau, particle.E, tau_0=medium.t0, hard_pid=particle.id,
-                                     model='GLV') * dtau)
+    # Get total pathlength traveled in the plasma
+    pathlength = particle.pathlength_since(medium.t0)
+
+    # Get pathlength traveled in this step
+    delta_t, delta_x, delta_y, delta_z = particle.next_pathlength(dtau, cart=True)
+    delta_pathlength = np.sqrt(delta_x ** 2 + delta_y ** 2 + delta_z ** 2)
+
+    # Compute radiative longitudinal energy loss -- Note particle LOSES the energy radiated, so we have (-1) factor
+    E_change = float((-1) * rad_energy_integrand(temp, pathlength, particle.E, hard_pid=particle.id,
+                                      model='GLV') * delta_pathlength)
+
+    # Add energy change to momentum parallel to particle motion (unit vector in direction of p)
+    # Radiated energy does only comes from momentum of particle, not from mass.
+    p_hat = p / np.linalg.norm(p)
+    dpx += float(E_change * p_hat[0])
+    dpy += float(E_change * p_hat[1])
+    dpz += float(E_change * p_hat[2])
+
 
     return hard_particles.ParticleDelta(dpx=dpx, dpy=dpy, dpz=dpz)
