@@ -225,6 +225,51 @@ class Particle:
             denom = np.finfo(float).tiny
         return float(0.5 * np.log((E + self.pz) / denom))
 
+    def pathlength_since(self, tau_0) -> float:
+        """
+        Get the 3D pathlength traveled since the given longitudinal proper time in fm
+        """
+
+        # Get trajectory history
+        traj = np.asarray(self.history, dtype=float)
+        tau = traj[:, 0]
+        x = traj[:, 1][tau >= tau_0]  # Indexed for all steps since tau_0.
+        y = traj[:, 2][tau >= tau_0]
+        z = (tau * np.sinh(traj[:, 3]))[tau >= tau_0]
+
+        # Get pathlength length in each coordinate
+        x_length = np.sum(np.abs(x[1:] - x[:-1]))  # Sum over all step lengths (absolute value!!!)
+        y_length = np.sum(np.abs(y[1:] - y[:-1]))
+        z_length = np.sum(np.abs(z[1:] - z[:-1]))
+
+        # Return total pathlength
+        return np.sqrt(x_length**2 + y_length**2 + z_length**2)  # [fm], same units as history
+
+    def next_pathlength(self, dtau, cart=False):
+        """
+        Get the pathlength traveled in the next timestep
+        """
+        # Compute relativistic velocities
+        mT = self.mT
+        rap_diff = self.etas - self.rap
+        betatau = float(1.0)  # Unitless
+        betax = float(self.px / (np.cosh(rap_diff) * mT))  # Unitless
+        betay = float(self.py / (np.cosh(rap_diff) * mT))  # Unitless
+        betaetas = float(-np.tanh(rap_diff) / self.tau)  # Units: fm^-1
+
+        delta_tau = betatau * dtau
+        delta_x = betax * dtau
+        delta_y = betay * dtau
+        delta_etas = betaetas * dtau
+
+        if cart:  # Return cartesian coordinate steps
+            delta_t = self.tau * np.cosh(delta_etas)  # Assumes small change in tau
+            delta_z = self.tau * np.sinh(delta_etas)  # Assumes small change in tau
+            return delta_t, delta_x, delta_y, delta_z
+        else:  # Return Milne coordinate steps
+            return delta_tau, delta_x, delta_y, delta_etas
+
+
     ###########################
     # Freestreaming evolution #
     ###########################
@@ -240,19 +285,14 @@ class Particle:
         if self.tau <= 0.0:
             raise ValueError(f"prop() requires tau > 0, got tau={self.tau}")
 
-        # Compute relativistic velocities
-        mT = self.mT
-        rap_diff = self.etas - self.rap
-        betatau = float(1.0)  # Unitless
-        betax = float(self.px / (np.cosh(rap_diff) * mT))  # Unitless
-        betay = float(self.py / (np.cosh(rap_diff) * mT))  # Unitless
-        betaetas = float(-np.tanh(rap_diff) / self.tau)  # Units: fm^-1
+        # Compute relativistic steps
+        delta_tau, delta_x, delta_y, delta_etas = self.next_pathlength(dtau, cart=False)
 
         # Update spacetime state variables
-        self.tau = float(self.tau + betatau * dtau)  # Units: [fm]
-        self.x = float(self.x + betax * dtau)  # Units: [fm]
-        self.y = float(self.y + betay * dtau)  # Units: [fm]
-        self.etas = float(self.etas + betaetas * dtau)  # Unitless: [fm^-1] * [fm] // unitless hyperbolic angle thing
+        self.tau = float(self.tau + delta_tau)  # Units: [fm]
+        self.x = float(self.x + delta_x)  # Units: [fm]
+        self.y = float(self.y + delta_y)  # Units: [fm]
+        self.etas = float(self.etas + delta_etas)  # Unitless: [fm^-1] * [fm] // unitless hyperbolic angle thing
 
         # if np.abs(self.etas) > config.jet.RAP_MAX_EVOLVE:
         #     # self.etas = np.sign(self.etas) * config.jet.RAP_MAX_EVOLVE
