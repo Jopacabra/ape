@@ -47,6 +47,5 @@ jet:  # Parameters for the jet production processes to be run
     EMIN: 3.0  # Minimum energy for the particle to be evolved in the medium. Particle gets a random thermal final momentum.
 global_constants:  # Physical constants to be set by the user.
     # Coupling is set by case selection in ebe scripts. Uses G_RAD by default.
-    G_RAD: 2.1  # Coupling constant for IN-MEDIUM strong interaction w/ radiative energy loss -- if num GLV, need table!
-    G_COL: 1.8  # ^^^ w/ radiative **&** collisional energy loss -- if num GLV, need EL table for this exact coupling!
+    G: 2.1  # Coupling constant for IN-MEDIUM strong interaction
     ROOT_S: 5020  # [GeV] sqrt(s) in GeV of collision system - also change Trento cross-section!

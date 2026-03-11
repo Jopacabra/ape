@@ -104,7 +104,5 @@ class jet:
 
 # Global constants
 class constants:
-    G_RAD = float(cfg['global_constants']['G_RAD'])
-    G_COL = float(cfg['global_constants']['G_COL'])
-    G = G_RAD
+    G = float(cfg['global_constants']['G'])
     ROOT_S = float(cfg['global_constants']['ROOT_S'])
