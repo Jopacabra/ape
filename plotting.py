@@ -123,47 +123,15 @@ def plot_trajectories(hard_event : hard_particles.EventRecord, *, z_axis: str = 
     plt.show()
 
 
-def azimuthal_plot_pythia(pythia_event : pythia8.Event, bottom=8, max_height=4, N=80):
+def plot_parton_hadron(hard_event : hard_particles.EventRecord, hadrons : pythia8.Event, rap_max=1.0, N=80, max_height=3, final_tau=None):
     """
-    Radial histogram of energy deposition from particles in the event record.
+    Plot a 2D faux-collider view for the event in the xy-plane.
 
-    Parameters
-    ----------
-    pythia_event : pythia8.Event to plot trajectories from.
-    bottom : The radius at which to start the histogram.
-    max_height : The maximum height of the histogram.
-    N : The number of bins in the histogram.
+    Params:
+        hard_event : APE event record object -- holds particle trajectory information
+        hadrons : Pythia event object -- holds hadron information for calorimeter plots
+        rap_max : Maximum rapidity to plot. Can be None for no cut. (default: 1.0)
     """
-
-    num_particles = pythia_event.size()
-
-    weight_array = np.array([])  # Array for weight of particle
-    phi_array = np.array([])  # Array for azimuthal coordinate of particle
-    for i in range(num_particles):
-        p = pythia_event[i]
-        if p.isFinal():  # Only record final state particles
-            phi_array = np.append(phi_array, p.phi())
-            weight_array = np.append(weight_array, p.pT())
-
-
-
-    phi_bins = np.linspace(0.0, 2 * np.pi, N, endpoint=False)
-    counts, _ = np.histogram(phi_array, bins=phi_bins, weights=weight_array)
-    radii = (max_height / np.amax(counts)) * counts
-    width = (2 * np.pi) / N
-
-    axis = plt.subplot(111, polar=True)
-    bars = axis.bar((phi_bins[0:-1] + phi_bins[1:])/2, radii, width=width, bottom=bottom)
-
-    # Use custom colors and opacity
-    for r, bar in zip(radii, bars):
-        bar.set_facecolor(plt.cm.jet(r / 10.))
-        bar.set_alpha(0.8)
-
-    return axis
-
-
-def plot_parton_hadron(hard_event : hard_particles.EventRecord, hadrons : pythia8.Event, rap_max=1.0, N=80, max_height=3):
     # Create figure
     fig = plt.figure(figsize=(7, 7))
 
@@ -206,6 +174,7 @@ def plot_parton_hadron(hard_event : hard_particles.EventRecord, hadrons : pythia
             if traj.ndim != 2 or traj.shape[1] < 4:
                 raise ValueError(f"Particle {idx} has unexpected history shape: {traj.shape}")
 
+            tau = np.array(traj[:, col_index["tau"]])
             x = np.array(traj[:, col_index["x"]]) - p.x_0
             y = np.array(traj[:, col_index["y"]]) - p.y_0
 
@@ -215,6 +184,14 @@ def plot_parton_hadron(hard_event : hard_particles.EventRecord, hadrons : pythia
             axis.plot(x, y, lw=1.5, alpha=0.9, color=color)
             any_plotted = True
             rmax = max(rmax, np.max(np.hypot(x, y)))
+
+            # Plot a thermalization mark
+            try:
+                thermalized = tau[-1] < (final_tau - (tau[-1] - tau[-2]))
+            except:
+                thermalized = False
+            if final_tau is not None and thermalized:
+                axis.plot(x[-1], y[-1], "o", fillstyle="none", markersize=8, alpha=0.9, color=color)
 
         # axis.set_xlabel("x [fm]")
         # axis.set_ylabel("y [fm]")
@@ -250,8 +227,9 @@ def plot_parton_hadron(hard_event : hard_particles.EventRecord, hadrons : pythia
         for i in range(num_particles):
             p = hadrons[i]
             if p.isFinal():  # Only record final state particles
-                phi_array = np.append(phi_array, np.mod(p.phi(), 2*np.pi))
-                weight_array = np.append(weight_array, p.pT())
+                if np.abs(p.y()) < rap_max:   # Only record particles in rapidity range
+                    phi_array = np.append(phi_array, np.mod(p.phi(), 2*np.pi))
+                    weight_array = np.append(weight_array, p.pT())
 
         phi_bins = np.linspace(0.0, 2 * np.pi, N, endpoint=False)
         counts, _ = np.histogram(phi_array, bins=phi_bins, weights=weight_array)
