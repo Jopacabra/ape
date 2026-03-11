@@ -176,6 +176,7 @@ def scattering(pThatmin=config.jet.PTHATMIN, pThatmax=config.jet.PTHATMAX, do_sh
             record = pythia_process.event
 
         # Confirm that our event only has particles we can handle
+        bad_particle = False
         allowed_partons = list(hard_particles._PARTICLE_SPECIES.keys())
         for i in np.arange(0, num_particles_hist):
             p = record[i]
@@ -184,7 +185,11 @@ def scattering(pThatmin=config.jet.PTHATMIN, pThatmax=config.jet.PTHATMAX, do_sh
                 if current_pid not in allowed_partons:
                     logging.debug("Disallowed particle: {}, Skipping event:{}".format(current_pid,
                                                                                          iEvent))
-                    continue
+                    bad_particle = True
+                    break
+
+        if bad_particle:
+            continue
 
         particle_list = []
         if get_all:
