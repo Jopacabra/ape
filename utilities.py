@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 import config
+import utilities
 
 # Command to run process in the terminal
 # Stolen and modified from DukeQCD "run-events.py":
@@ -498,7 +499,7 @@ def perp_vec(a, b):
     a = np.asarray(a, dtype=float)
     b = np.asarray(b, dtype=float)
 
-    # Magnitude of p
+    # Magnitude^2 of p
     pp = np.dot(b, b)
 
     # Subtract off component of u perpendicular to p
