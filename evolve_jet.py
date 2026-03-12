@@ -22,11 +22,14 @@ import plotting
 ############
 # Analysis options
 analyze = True
-theta_bins = np.linspace(-1, 1, 21)
-EECs = np.zeros(len(theta_bins)-1)
+costheta_bins = np.linspace(-1, 1, 21)
+EECs = np.zeros(len(costheta_bins) - 1)
+E_bins = np.linspace(1, 15, 5)
+v1s = np.zeros(len(E_bins) - 1)
+v2s = np.zeros(len(E_bins) - 1)
 
 # Visualization options
-visualize = True
+visualize = False
 
 # Event options
 num_hard_events = 1
@@ -170,10 +173,10 @@ try:
             logging.info('Visualizing...')
 
             # plotting.plot_trajectories(hard_event, z_axis=None, rap_max=1)
-            plotting.plot_parton_hadron(hard_event=hard_event, hadrons=hard_event_hadrons, rap_max=1.5)
-            # plotting.plot_trajectories(hard_event, z_axis="z", rap_max=5)
-            # hard_event.plot_trajectories(z_axis="etas", rap_max=5)
-            # plt.savefig("particle_trajectories.png", dpi=150)
+            plotting.plot_parton_hadron(hard_event=hard_event, hadrons=hard_event_hadrons, rap_max=1.5,
+                                        final_tau=plasma_object.tf)
+            plotting.plot_trajectories(hard_event, z_axis="z", rap_max=None)
+            plotting.plot_trajectories(hard_event, z_axis="etas", rap_max=None)
 
         #####################
         # Optional analysis #
@@ -190,10 +193,19 @@ try:
                 if jet.pt() > 10:
                     analyzed_jets.append(jet)
 
-            # Compute EECs for jets
+            # Compute observables for jets
             for jet in analyzed_jets:
-                current_EECs, _ = observables.EEC(jet, plot=False, bins=theta_bins)
+                # EECs
+                current_EECs, _ = observables.EEC(jet=jet, plot=False, bins=costheta_bins)
                 EECs = EECs + current_EECs
+
+                # vns
+                current_v1s, _ = observables.fastjet_intrajetvnish(jet=jet, pT_min=1, alpha_0=0, E_bins=E_bins, n=1)
+                v1s = v1s + (current_v1s)
+                current_v2s, _ = observables.fastjet_intrajetvnish(jet=jet, pT_min=1, alpha_0=0, E_bins=E_bins, n=2)
+                v2s = v2s + (current_v2s)
+
+
                 num_jets += 1
 
 except KeyboardInterrupt:
@@ -208,17 +220,18 @@ except Exception as e:
 
 if analyze:
     # Save result
-    np.savez("EECs.npz", EEC_sum=EECs, theta_bins=theta_bins, num_jets=np.array([num_jets]))
+    np.savez("EECs.npz", EEC_sum=EECs, costheta_bins=costheta_bins, num_jets=np.array([num_jets]))
+    np.savez("intrajet_vns_med_ref.npz", v1_sum=v1s, v2_sum=v2s, E_bins=E_bins, num_jets=np.array([num_jets]))
 
     # Plot
-    plt.figure(figsize=(8, 6))
-    plt.plot((theta_bins[0:-1]+theta_bins[1:]) / 2, EECs / num_jets, marker='o', linestyle='-', color='b', label='Weighted Avg EEC')
-    plt.xlabel('cos(theta)', fontsize=14)
-    plt.ylabel('Average EEC', fontsize=14)
-    plt.title('Energy-Energy Correlation (EEC) vs. cos(theta)', fontsize=16)
-    plt.legend(fontsize=12)
-    plt.xscale("log")
-    plt.yscale("log")
-    plt.grid(True)
-    plt.show()
+    # plt.figure(figsize=(8, 6))
+    # plt.plot((costheta_bins[0:-1] + costheta_bins[1:]) / 2, EECs / num_jets, marker='o', linestyle='-', color='b', label='Weighted Avg EEC')
+    # plt.xlabel('cos(theta)', fontsize=14)
+    # plt.ylabel('Average EEC', fontsize=14)
+    # plt.title('Energy-Energy Correlation (EEC) vs. cos(theta)', fontsize=16)
+    # plt.legend(fontsize=12)
+    # plt.xscale("log")
+    # plt.yscale("log")
+    # plt.grid(True)
+    # plt.show()
 
