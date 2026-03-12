@@ -3,6 +3,7 @@ import logging
 import pythia8
 import numpy as np
 import fastjet
+import pyhepmc
 
 import config
 import hard_particles
@@ -10,7 +11,7 @@ import hard_particles
 # Function to generate a pp hard scattering
 def scattering(pThatmin=config.jet.PTHATMIN, pThatmax=config.jet.PTHATMAX, do_shower=config.jet.SHOWER,
                type="dijet", min_pt=1, get_all=True, tau=config.transport.hydro.TAU_FS, x=0, y=0, etas=0,
-               y_res = config.jet.RAP_MAX):
+               y_res = config.jet.RAP_MAX, pythia_event=False):
     ############
     # Settings #
     ############
@@ -261,7 +262,10 @@ def scattering(pThatmin=config.jet.PTHATMIN, pThatmax=config.jet.PTHATMAX, do_sh
     # Make an ape hard_particles.EventRecord object
     ape_event = hard_particles.EventRecord(particles=output_particles, weight=weight)
 
-    return ape_event
+    if pythia_event:
+        return ape_event, record
+    else:
+        return ape_event
 
 
 # Function to take a list of particles and rotate the entire group by a random angle phi.
@@ -398,3 +402,54 @@ def pythia_to_fastjet(pythia_had: pythia8.Event, rap_max: float=1.5, R: float=0.
     jets = jet_def(particles)
 
     return jets
+
+def pythia_to_hepmc(pythia_event: pythia8.Event, event_no=0, vx=None, vy=None, vz=None, vt=None):
+    """
+    Function to convert a pythia event to a HepMC3 event, preserving parentage, using pyhepmc
+    """
+    # Get a list of the particles
+    particles = pythia_event.particles()[1:]
+
+    # Build particle property lists using list comprehension
+    px = [p.px() for p in particles]
+    py = [p.py() for p in particles]
+    pz = [p.pz() for p in particles]
+    en = [p.e() for p in particles]
+    m = [p.m0() for p in particles]
+    pid = [p.id() for p in particles]
+    status = [p.status() for p in particles]
+    parents = [[p.mother1(), p.mother2()] for p in particles]
+    children = [[p.daughter1(), p.daughter2()] for p in particles]
+
+    # Get HepMC3 object
+    hepmc_event = pyhepmc.GenEvent()
+    if vx is not None and vy is not None and vz is not None and vt is not None:
+        hepmc_event.from_hepevt(event_number=event_no,
+                                px=px,
+                                py=py,
+                                pz=pz,
+                                en=en,
+                                m=m,
+                                pid=pid,
+                                status=status,
+                                parents=parents,
+                                children=children,
+                                vx=vx,
+                                vy=vy,
+                                vz=vz,
+                                vt=vt,
+                                fortran=True)
+    else:
+        hepmc_event.from_hepevt(event_number=event_no,
+                                px=px,
+                                py=py,
+                                pz=pz,
+                                en=en,
+                                m=m,
+                                pid=pid,
+                                status=status,
+                                parents=parents,
+                                children=children,
+                                fortran=True)
+
+    return hepmc_event
