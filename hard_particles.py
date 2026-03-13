@@ -515,7 +515,6 @@ class Particle:
             col=int(p.col()),
             acol=int(p.acol()),
             tag=tag,
-            # index=int(p.mother1()),
             mother1=int(p.mother1()),
             mother2=int(p.mother2()),
             daughter1=int(p.daughter1()),

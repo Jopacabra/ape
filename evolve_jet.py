@@ -6,6 +6,12 @@ import timeit
 
 import numpy as np
 import matplotlib.pyplot as plt
+import pythia8
+import pyhepmc as hp
+# from particle import literals as lp
+from IPython.display import display
+
+
 
 import config
 import pythia
@@ -21,7 +27,7 @@ import plotting
 # Settings #
 ############
 # Analysis options
-analyze = True
+analyze = False
 costheta_bins = np.linspace(-1, 1, 21)
 EECs = np.zeros(len(costheta_bins) - 1)
 E_bins = np.linspace(1, 15, 5)
@@ -29,11 +35,11 @@ v1s = np.zeros(len(E_bins) - 1)
 v2s = np.zeros(len(E_bins) - 1)
 
 # Visualization options
-visualize = False
+visualize = True
 
 # Event options
 num_hard_events = 1
-event_type = "Duke"
+event_type = "load"
 plasma_file_path = "stored_events/Duke_avg/event_0/viscous_14_moments_evo.dat"
 
 
@@ -138,7 +144,7 @@ try:
             y_0 = 1
             etas_0 = 0.0
         logging.info(f"Embedding hard scattering at ({tau_0}, {x_0}, {y_0}, {etas_0})")
-        hard_event = pythia.scattering(tau=tau_0, x=x_0, y=y_0, etas=etas_0)
+        hard_event, pythia_record = pythia.scattering(tau=tau_0, x=x_0, y=y_0, etas=etas_0, pythia_event=True)
         num_hard_particles = len(hard_event.particles)
         logging.info('Hard scattering done.')
 
@@ -163,8 +169,24 @@ try:
         """
         Hadronize hard particles using Lund-String hadronization.
         """
-        hard_event_hadrons = pythia.pp_shower_hadronize(hard_event)
+        hard_event_hadrons = pythia.pp_shower_hadronize(hard_event, pythia_record)  # Adds shower history
 
+
+        ################
+        # Event output #
+        ################
+        """
+        Send the output of the Pythia event to a HepMC3 file.
+        """
+        hepmc_event = pythia.pythia_to_hepmc(hard_event_hadrons)
+        hepmc_filename = "hadronic_event.dat"
+        os.remove(hepmc_filename)
+        with hp.open(hepmc_filename, "w") as f:
+            f.write(hepmc_event)
+
+        graph_filename = "hadronic_event.svg"
+        os.remove(graph_filename)
+        hp.view.savefig(hepmc_event, graph_filename)
 
         ##########################
         # Optional visualization #
@@ -173,10 +195,9 @@ try:
             logging.info('Visualizing...')
 
             # plotting.plot_trajectories(hard_event, z_axis=None, rap_max=1)
-            plotting.plot_parton_hadron(hard_event=hard_event, hadrons=hard_event_hadrons, rap_max=1.5,
-                                        final_tau=plasma_object.tf)
-            plotting.plot_trajectories(hard_event, z_axis="z", rap_max=None)
-            plotting.plot_trajectories(hard_event, z_axis="etas", rap_max=None)
+            plotting.plot_parton_hadron(hard_event=hard_event, hadrons=hard_event_hadrons, rap_max=1.5)
+            # plotting.plot_trajectories(hard_event, z_axis="z", rap_max=None)
+            # plotting.plot_trajectories(hard_event, z_axis="etas", rap_max=None)
 
         #####################
         # Optional analysis #
