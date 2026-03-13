@@ -118,6 +118,17 @@ class Particle:
     px_0: float = field(init=False)
     py_0: float = field(init=False)
     pz_0: float = field(init=False)
+    thermalized: bool = False
+
+    #######################################
+    # Optional shower history information #
+    #######################################
+    index : int = None # unique identifier for this parton in the shower -- usually from Pythia index
+    status : int = 23
+    mother1 : int = None
+    mother2: int = None
+    daughter1 : int = None
+    daughter2: int = None
 
     def __post_init__(self) -> None:
         # validate parton species and set derived identity fields
@@ -464,6 +475,9 @@ class Particle:
             self.py = new_p[1]
             self.pz = new_p[2]
 
+            # Mark particle thermalized
+            self.thermalized = True
+
             return True
 
         raise Exception("Failed to sample particle momentum.")
@@ -501,6 +515,11 @@ class Particle:
             col=int(p.col()),
             acol=int(p.acol()),
             tag=tag,
+            # index=int(p.mother1()),
+            mother1=int(p.mother1()),
+            mother2=int(p.mother2()),
+            daughter1=int(p.daughter1()),
+            daughter2=int(p.daughter2())
         )
 
 ParticleT = TypeVar("ParticleT")

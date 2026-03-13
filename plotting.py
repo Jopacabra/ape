@@ -123,7 +123,7 @@ def plot_trajectories(hard_event : hard_particles.EventRecord, *, z_axis: str = 
     plt.show()
 
 
-def plot_parton_hadron(hard_event : hard_particles.EventRecord, hadrons : pythia8.Event, rap_max=1.0, N=80, max_height=3, final_tau=None):
+def plot_parton_hadron(hard_event : hard_particles.EventRecord, hadrons : pythia8.Event, rap_max=1.0, N=80, max_height=3):
     """
     Plot a 2D faux-collider view for the event in the xy-plane.
 
@@ -159,9 +159,26 @@ def plot_parton_hadron(hard_event : hard_particles.EventRecord, hadrons : pythia
         cmap = plt.get_cmap("tab20", max(len(uniq_ids), 1))
         id_to_color = {pid: cmap(i) for i, pid in enumerate(uniq_ids)}
 
+        # Iterate over particles and find rmax
+        rmax = 0
+        any_plotted = False
+        for idx, p in enumerate(hard_event.particles):
+            hist = getattr(p, "history", None)
+            if not hist:
+                continue
+
+            if rap_max is not None and np.abs(p.rap) > rap_max:
+                continue
+
+            traj = np.asarray(hist, dtype=float)
+            if traj.ndim != 2 or traj.shape[1] < 4:
+                raise ValueError(f"Particle {idx} has unexpected history shape: {traj.shape}")
+
+            x = np.array(traj[:, col_index["x"]]) - p.x_0
+            y = np.array(traj[:, col_index["y"]]) - p.y_0
+            rmax = max(rmax, np.max(np.hypot(x, y)))
 
         # Iterate over particles and plot
-        rmax = 0
         for idx, p in enumerate(hard_event.particles):
             hist = getattr(p, "history", None)
             if not hist:
@@ -183,15 +200,21 @@ def plot_parton_hadron(hard_event : hard_particles.EventRecord, hadrons : pythia
 
             axis.plot(x, y, lw=1.5, alpha=0.9, color=color)
             any_plotted = True
-            rmax = max(rmax, np.max(np.hypot(x, y)))
 
-            # Plot a thermalization mark
-            try:
-                thermalized = tau[-1] < (final_tau - (tau[-1] - tau[-2]))
-            except:
-                thermalized = False
-            if final_tau is not None and thermalized:
-                axis.plot(x[-1], y[-1], "o", fillstyle="none", markersize=8, alpha=0.9, color=color)
+            if p.thermalized:
+                # Plot thermalization mark
+                axis.plot(x[-1], y[-1], "x", fillstyle="none", markersize=8, alpha=0.9, color=color)
+
+            # Get momentum info and compute azimuthal position of detector interaction
+            px = p.px
+            py = p.py
+            phi = np.arctan2(py, px)
+            det_x = rmax * np.cos(phi)
+            det_y = rmax * np.sin(phi)
+
+            # Plot detector interaction
+            axis.plot(det_x, det_y, "o", fillstyle="none", markersize=8, alpha=0.9, color=color)
+
 
         # axis.set_xlabel("x [fm]")
         # axis.set_ylabel("y [fm]")
