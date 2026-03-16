@@ -443,10 +443,13 @@ class plasma_event:
     temp_grad_z: Callable[[Any], np.ndarray] = field(init=False)
     grad_x_u_x: Callable[[Any], np.ndarray] = field(init=False)
     grad_x_u_y: Callable[[Any], np.ndarray] = field(init=False)
+    grad_x_u_z: Callable[[Any], np.ndarray] = field(init=False)
     grad_y_u_x: Callable[[Any], np.ndarray] = field(init=False)
     grad_y_u_y: Callable[[Any], np.ndarray] = field(init=False)
+    grad_y_u_z: Callable[[Any], np.ndarray] = field(init=False)
     grad_z_u_x: Callable[[Any], np.ndarray] = field(init=False)
     grad_z_u_y: Callable[[Any], np.ndarray] = field(init=False)
+    grad_z_u_z: Callable[[Any], np.ndarray] = field(init=False)
 
     # Domain metadata (set in __post_init__)
     timestep: float = field(init=False)
@@ -499,10 +502,13 @@ class plasma_event:
         self.temp_grad_z = _BoostInvariantMilneAdapter(lambda x : 0)
         self.grad_x_u_x = _BoostInvariantMilneAdapter(grad_xux_3d) if grad_xux_3d is not None else _BoostInvariantMilneAdapter(lambda p: np.zeros(p.shape[:-1]))
         self.grad_x_u_y = _BoostInvariantMilneAdapter(grad_xuy_3d) if grad_xuy_3d is not None else _BoostInvariantMilneAdapter(lambda p: np.zeros(p.shape[:-1]))
+        self.grad_x_u_z = _BoostInvariantMilneAdapter(lambda x : 0)
         self.grad_y_u_x = _BoostInvariantMilneAdapter(grad_yux_3d) if grad_yux_3d is not None else _BoostInvariantMilneAdapter(lambda p: np.zeros(p.shape[:-1]))
         self.grad_y_u_y = _BoostInvariantMilneAdapter(grad_yuy_3d) if grad_yuy_3d is not None else _BoostInvariantMilneAdapter(lambda p: np.zeros(p.shape[:-1]))
+        self.grad_y_u_z = _BoostInvariantMilneAdapter(lambda x: 0)
         self.grad_z_u_x = _BoostInvariantMilneAdapter(lambda x: 0)
         self.grad_z_u_y = _BoostInvariantMilneAdapter(lambda x: 0)
+        self.grad_z_u_z = lambda x : 1 / (np.cosh(x[3]) * x[0])  # 1 / (tau cosh(eta_s))
 
         # Set domains from the underlying interpolator grid when available
         try:
