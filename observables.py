@@ -1,8 +1,10 @@
 import numpy as np
 import timeit
+import logging
 
 import matplotlib.pyplot as plt
 import fastjet
+import pyhepmc
 import pythia8
 
 import utilities
@@ -75,15 +77,46 @@ def EEC(jet: fastjet.PseudoJet=None, event: pythia8.Event=None, plot=False, pT_m
 
     return average_EEC, bins
 
-def fastjet_example():
-    particles = []
-    particles.append(fastjet.PseudoJet(100.0, 0.0, 0.0, 100.0))  # px, py, pz, E
-    particles.append(fastjet.PseudoJet(150.0, 0.0, 0.0, 150.0))
-    R = 0.4
+def hepmc_to_fastjet(hepmc_event: pyhepmc.GenEvent, R: float=0.4, rap_max: float=1.5, pTmin: float=0.0):
+    """
+    Function to run jetfinder on a HepMC event
+    """
+    # Access numpy interface of event object
+    particles = hepmc_event.numpy.particles
+
+    # Compute filter quantities
+    E = particles.e
+    px = particles.px
+    py = particles.py
+    pz = particles.pz
+    denom = E - pz
+    rap = 0.5 * np.log((E + pz) / denom)
+    pT = np.hypot(px, py)
+
+    # Filter
+    ma = particles.status == 1  # Only consider final state particles
+    # ma &= np.abs(particles.pid) == 211  # Only consider charged pions
+    ma &= np.abs(rap) <= rap_max  # Cut on rapidity
+    ma &= pT > pTmin  # Cut on transverse momentum
+
+    # Iterate and make PseudoJets for fastjet.
+    px = px[ma]
+    py = py[ma]
+    pz = pz[ma]
+    E = E[ma]
+    pseudo_particles = []
+    for i in range(len(px)):
+        # Append pseudojet for this little guy
+        pseudo_particles.append(fastjet.PseudoJet(px[i], py[i], pz[i], E[i]))  # px, py, pz, E
+
+    # Jet algorithm definition
     jet_def = fastjet.JetDefinition(fastjet.antikt_algorithm, R)
-    jets = jet_def(particles)
-    print(jet_def)
-    for jet in jets: print(jet)
+    logging.info("Jetfinding using FastJet algorithm: {}".format(jet_def))
+
+    # Find jets
+    jets = jet_def(pseudo_particles)
+
+    return jets
 
 def fastjet_intrajetvnish(jet: fastjet.PseudoJet=None, event: pythia8.Event=None, n=1, pT_min=5, alpha_0=None,
                           E_bins=None):
@@ -129,16 +162,12 @@ def fastjet_intrajetvnish(jet: fastjet.PseudoJet=None, event: pythia8.Event=None
 
     # Bin according to particle energy
     if E_bins is None:
-        np.linspace(pT_min, 15, 10)
+        E_bins = np.linspace(pT_min, 15, 10)
     E_counts, _ = np.histogram(E_array, bins=E_bins)
     phase_sum, _ = np.histogram(E_array, bins=E_bins, weights=phase)
-    # print(phase_sum, E_counts)
-    if alpha_0 is None:
-        # Without a reference angle, we should consider all values to be positive.
-        avg_vns = np.abs(np.nan_to_num((phase_sum / E_counts), nan=0.0))  # Sets nans from E_counts=0 to be 0.0.
-    else:
-        # With a reference angle, we care if the anisotropy is positive or negative.
-        avg_vns = np.nan_to_num((phase_sum / E_counts), nan=0.0)  # Sets nans from E_counts=0 to be 0.0.
+
+    # Compute averages and return
+    avg_vns = np.nan_to_num((phase_sum / E_counts), nan=0.0)  # Sets nans from E_counts=0 to be 0.0.
 
     return avg_vns, E_bins
 

@@ -432,7 +432,7 @@ def pythia_to_fastjet(pythia_had: pythia8.Event, rap_max: float=1.5, R: float=0.
     for p in pythia_had.particles():
         # Filter
         if not p.isFinal(): continue  # Only consider final state particles
-        if not p.isCharged(): continue  # Only consider charged particles
+        # if not p.isCharged(): continue  # Only consider charged particles
         if np.abs(p.y()) > rap_max: continue  # Rapidity cut
         if p.pT() < pTmin: continue  # Particle pT cut
 
