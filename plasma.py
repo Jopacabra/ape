@@ -542,63 +542,7 @@ class plasma_event:
 
     # Method to return the total magnitude of the velocity at a given point
     def vel(self, point=None):
-        return np.sqrt(self.x_vel(point) ** 2 + self.y_vel(point) ** 2)
-
-    # Method to return angle of velocity vector at a given point
-    def vel_angle(self, point=None):
-        current_point = point
-
-        # np.arctan2 gives a signed angle, as opposed to np.arctan
-        arctan2 = np.arctan2(self.y_vel(current_point), self.x_vel(current_point))
-
-        # if the angle was negative, we need to correct it to return an angle on the domain [0, 2pi]
-        if arctan2 < 0:
-            return 2 * np.pi + arctan2  # Here we add the negative angle, reducing to corresponding value on [0, 2pi]
-        else:
-            return arctan2
-
-    # Method to return velocity perpendicular to given trajectory angle at given time
-    def u_perp(self, point, phi):
-        return -self.x_vel(point) * np.sin(phi) \
-               + self.y_vel(np.array(point)) * np.cos(phi)
-
-    # Method to return velocity parallel to given trajectory angle at given time
-    def u_par(self, point, phi):
-        return self.x_vel(point) * np.cos(phi) \
-               + self.y_vel(np.array(point)) * np.sin(phi)
-
-    # Method to return gradient of the Temperature
-    # at a particular point perpendicular to a given angle phi.
-    # Chosen to be ideal gluon gas dens. as per Sievert, Yoon, et. al.
-    def grad_perp_T(self, point, phi):
-        # Compute x and y temperature gradient at given point, make grad vector
-        grad_x = self.temp_grad_x(point)
-        grad_y = self.temp_grad_y(point)
-        grad_T = np.array([grad_x, grad_y])
-
-        # Compute unit vector perpendicular to given phi
-        e_perp = np.array([-np.sin(phi), np.cos(phi)])
-
-        # Compute temperature gradient perp to given phi
-        grad_perp_T = np.dot(e_perp, grad_T)  #(grad_x * e_perp[0]) + (grad_y * e_perp[1])
-
-        return grad_perp_T
-
-    # Method to return perp grad u perp, relative to given angle
-    def grad_perp_u_perp(self, point, phi):
-        # This is (eperp . grad) * (eperp . u)
-        return (self.grad_x_u_x(point) * (np.sin(phi)**2)
-                - self.grad_y_u_x(point) * np.sin(phi)*np.cos(phi)
-                - self.grad_x_u_y(point) * np.sin(phi)*np.cos(phi)
-                + self.grad_y_u_y(point) * (np.cos(phi)**2))
-
-    # Method to return perp grad u par, relative to given angle
-    def grad_perp_u_par(self, point, phi):
-        # This is (eperp . grad) * (epar . u)
-        return (- self.grad_x_u_x(point) * np.sin(phi) * np.cos(phi)
-                + self.grad_y_u_x(point) * (np.cos(phi)**2)
-                - self.grad_x_u_y(point) * (np.sin(phi)**2)
-                + self.grad_y_u_y(point) * np.sin(phi) * np.cos(phi))
+        return np.sqrt(self.x_vel(point) ** 2 + self.y_vel(point) ** 2 + self.z_vel(point) ** 2)
 
     # Method to find the maximum temperature of a plasma object
     def max_temp(self, resolution=100, time='i'):
@@ -702,57 +646,6 @@ class plasma_event:
         stdTemp = np.nanstd(fluid_cell_temps)
 
         return maxTemp, minTemp, meanTemp, medianTemp, stdTemp
-
-    # Method to find the maximum temperature of a plasma object
-    def ext_vec_mag(self, vec='vel', ext='max', resolution=100, time='i'):
-        if time == 'i':
-            time = self.t0
-        elif time == 'f':
-            time = self.tf
-        else:
-            pass
-
-        # Adapted from grid_reader.qgp_plot()
-        #
-        # Domains of physical positions to plot at (in fm)
-        # These limits of the linear space obtain the largest and smallest input value for
-        # the interpolating function's position inputs.
-        x_sample_space = self.xspace(resolution=resolution)
-
-        # Create arrays of each coordinate
-        # E.g. Here x_coords is a 2D array showing the x coordinates of each cell
-        # We necessarily must set time equal to a constant to plot in 2D.
-        x_coords, y_coords = np.meshgrid(x_sample_space, x_sample_space, indexing='ij')
-        # t_coords set to be an array matching the length of x_coords full of constant time
-        # Note that we select "initial time" as 0.5 fs by default
-        t_coords = np.full_like(x_coords, time)
-
-        # Put coordinates together into ordered pairs.
-        points = np.transpose(np.array([t_coords, x_coords, y_coords]), (2, 1, 0))
-
-        # Compute vectors at sample points
-        if vec == 'vel':
-            x_vec_mags = self.x_vel(points)
-            y_vec_mags = self.y_vel(points)
-        elif vec == 'grad':
-            x_vec_mags = self.temp_grad_x(points)
-            y_vec_mags = self.temp_grad_y(points)
-        else:
-            x_vec_mags = 0
-            y_vec_mags = 0
-
-        # Calculate magnitude
-        vec_mags = np.sqrt(x_vec_mags ** 2 + y_vec_mags ** 2)
-
-        # Determine extrema type and take extrema
-        if ext == 'max':
-            ext_vec_mag = np.amax(vec_mags)
-        elif ext == 'min':
-            ext_vec_mag = np.amin(vec_mags)
-        else:
-            ext_vec_mag = 0
-
-        return ext_vec_mag
 
     # Method to plot interpolated temperature function and / or velocity field
     # Can plot contour or density / colormesh for temps, stream or quiver for velocities
@@ -906,6 +799,7 @@ class plasma_event:
 
         return temps, vels, grads, tempcb, velcb, gradcb
 
+
 # Takes tabulated data for the temperature and velocities
 # and returns plasma_event objects generated from them.
 def tabulated_plasma(t_space, x_space, temp_values, x_vel_values, y_vel_values, name=None, return_grids=False):
@@ -952,6 +846,7 @@ def tabulated_plasma(t_space, x_space, temp_values, x_vel_values, y_vel_values, 
         return plasma_object, temp_values, x_vel_values, y_vel_values,
     else:
         return plasma_object
+
 
 # Takes callable functions that take parameters (t, x, y) for the temperature and velocities
 # and returns plasma_event objects generated from them.
