@@ -450,9 +450,9 @@ class Particle:
 
             # Compute distribution values for energy values
             if self.isq:  # Use fermion dist. -- Fermi-Dirac distribution
-                dist = (1 / (np.exp(-E_samps / config.transport.hydro.T_SWITCH) + 1))
+                dist = (1 / (np.exp(E_samps / config.transport.hydro.T_SWITCH) + 1))
             elif self.isg or self.isEWB:  # Use boson dist. -- Bose-Einstein distribution
-                dist = (1 / (np.exp(-E_samps / config.transport.hydro.T_SWITCH) - 1))
+                dist = (1 / (np.exp(E_samps / config.transport.hydro.T_SWITCH) - 1))
             else:
                 raise ValueError(f"Unknown parton statistics {self.id}")
             dist = dist / np.amax(dist)  # Normalize largest value to 1.
