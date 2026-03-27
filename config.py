@@ -97,6 +97,7 @@ class jet:
     K_BBMG = 1  #float(cfg['jet']['K_BBMG'])
     PT_BIN = float(cfg['jet']['PT_BIN'])
     TYPE = str(cfg['jet']['TYPE'])
+    RAP_MIN = float(cfg['jet']['RAP_MIN'])
     RAP_MAX = float(cfg['jet']['RAP_MAX'])
     RAP_MAX_EVOLVE = float(cfg['jet']['RAP_MAX_EVOLVE'])
     EMIN = float(cfg['jet']['EMIN'])

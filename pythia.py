@@ -11,7 +11,7 @@ import hard_particles
 # Function to generate a pp hard scattering
 def scattering(pThatmin=config.jet.PTHATMIN, pThatmax=config.jet.PTHATMAX, do_shower=config.jet.SHOWER,
                type="dijet", min_pt=1, get_all=True, tau=config.transport.hydro.TAU_FS, x=0, y=0, etas=0,
-               y_res = config.jet.RAP_MAX, pythia_event=False, quiet=True):
+               y_max=config.jet.RAP_MAX, y_min=config.jet.RAP_MIN, pythia_event=False, quiet=True):
     ############
     # Settings #
     ############
@@ -52,11 +52,15 @@ def scattering(pThatmin=config.jet.PTHATMIN, pThatmax=config.jet.PTHATMAX, do_sh
             # Get info
             info = pythia_process.infoPython()
 
-            # Get only events at mid-rapidity, within my chosen y_res
-            if np.abs(info.y()) < y_res:  # and np.abs(chosen_pt -np.abs(info.pTHat())) < pt_hat_res:
-                return False  # Do not veto the event
-            else:
+            # Get only events at mid-rapidity, within my chosen bounds
+            abs_y = np.abs(info.y())
+            if abs_y > y_max:  # and np.abs(chosen_pt -np.abs(info.pTHat())) < pt_hat_res:
                 return True  # Veto the event
+            elif abs_y < y_min:
+                return True  # Veto the event
+            else:
+                logging.info(f"Hard scattering y = {info.y()}")
+                return False  # Do not veto the event
 
     #################
     # Set up Pythia #
@@ -233,7 +237,7 @@ def scattering(pThatmin=config.jet.PTHATMIN, pThatmax=config.jet.PTHATMAX, do_sh
             if type == "dijet":
                 if ((np.abs(ids[0]) < 3.1) or (np.abs(ids[0]) == 21)) and ((np.abs(ids[1]) < 3.1) or (np.abs(ids[1]) == 21)):
                     if (max_0 > min_pt) and (max_1 > min_pt):
-                        if np.abs(ys[0]) < y_res and np.abs(ys[1]) < y_res:
+                        if np.abs(ys[0]) < y_max and np.abs(ys[1]) < y_max:
                             if ((max_0 - max_1)/max_0 < soft_emission_cut):
                                 success = True
                                 break  # Stop generating events, keep these particles
@@ -243,7 +247,7 @@ def scattering(pThatmin=config.jet.PTHATMIN, pThatmax=config.jet.PTHATMAX, do_sh
                         and ((np.abs(ids[1]) < 3.1) or (np.abs(ids[1]) == 21) or (np.abs(ids[1]) == 22))):
                     if ids[0] == 22 or ids[1] == 22:  # At least one photon
                         if (max_0 > min_pt) and (max_1 > min_pt):
-                            if np.abs(ys[0]) < y_res and np.abs(ys[1]) < y_res:
+                            if np.abs(ys[0]) < y_max and np.abs(ys[1]) < y_max:
                                 if ((max_0 - max_1)/max_0 < soft_emission_cut):
                                     success = True
                                     break  # Stop generating events, keep these particles
