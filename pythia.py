@@ -273,9 +273,9 @@ def scattering(pThatmin=config.jet.PTHATMIN, pThatmax=config.jet.PTHATMAX, do_sh
     ape_event = hard_particles.EventRecord(particles=output_particles, weight=weight)
 
     if pythia_event:
-        return ape_event, record
+        return ape_event, weight, record
     else:
-        return ape_event
+        return ape_event, weight
 
 
 # Function to take a list of particles and rotate the entire group by a random angle phi.
@@ -453,7 +453,7 @@ def pythia_to_fastjet(pythia_had: pythia8.Event, rap_max: float=1.5, R: float=0.
     return jets
 
 
-def pythia_to_hepmc(pythia_event: pythia8.Event, event_no=0, vx=None, vy=None, vz=None, vt=None):
+def pythia_to_hepmc(pythia_event: pythia8.Event, event_no=0, vx=None, vy=None, vz=None, vt=None, weight=1.0):
     """
     Function to convert a pythia event to a HepMC3 event, preserving parentage, using pyhepmc.
 
@@ -481,15 +481,20 @@ def pythia_to_hepmc(pythia_event: pythia8.Event, event_no=0, vx=None, vy=None, v
     hepmc_event = pyhepmc.GenEvent()
     hepmc_event.event_number = event_no
 
-    # Set default vertex position
-    if vx is None:
-        vx = 0.0
-    if vy is None:
-        vy = 0.0
-    if vz is None:
-        vz = 0.0
-    if vt is None:
-        vt = 0.0
+    # Set event info properties
+    event_info_object = pyhepmc.GenEventData()
+    event_info_object.event_pos = pyhepmc.FourVector(t=vt, x=vx, y=vy, z=vz)
+    hepmc_event.read_data(event_info_object)
+
+    # Set run info properties
+    run_info_object = pyhepmc.GenRunInfo()
+    run_info_object.weight_names = ["pythia"]
+
+    # Attach to event object
+    hepmc_event.run_info = run_info_object
+
+    # Set weight
+    hepmc_event.set_weight(name=str('pythia'), value=float(weight))
 
     # First pass: create all HepMC particles
     hepmc_particles = []

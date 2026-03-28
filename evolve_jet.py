@@ -141,7 +141,7 @@ try:
             y_0 = 1
             etas_0 = 0.0
         logging.info(f"Embedding hard scattering at ({tau_0}, {x_0}, {y_0}, {etas_0})")
-        hard_event, pythia_record = pythia.scattering(tau=tau_0, x=x_0, y=y_0, etas=etas_0, pythia_event=True)
+        hard_event, event_weight, pythia_record = pythia.scattering(tau=tau_0, x=x_0, y=y_0, etas=etas_0, pythia_event=True)
         num_hard_particles = len(hard_event.particles)
         logging.info('Hard scattering done.')
 
@@ -180,13 +180,13 @@ try:
         """
         Send the output of the Pythia events to a HepMC3 file.
         """
-        hepmc_event = pythia.pythia_to_hepmc(hard_event_hadrons)
+        hepmc_event = pythia.pythia_to_hepmc(hard_event_hadrons, vt=tau_0*np.cosh(etas_0), vx=x_0, vy=y_0, vz=tau_0*np.sinh(etas_0), weight=event_weight)
         hepmc_filename = f"results/hepmc/m/{random_label}.dat"
         # os.remove(hepmc_filename)
         with hp.open(hepmc_filename, "w") as f:
             f.write(hepmc_event)
 
-        vac_hepmc_event = pythia.pythia_to_hepmc(vacuum_event_hadrons)
+        vac_hepmc_event = pythia.pythia_to_hepmc(vacuum_event_hadrons, vt=tau_0*np.cosh(etas_0), vx=x_0, vy=y_0, vz=tau_0*np.sinh(etas_0), weight=event_weight)
         vac_hepmc_filename = f"results/hepmc/v/vac_{random_label}.dat"
         # os.remove(hepmc_filename)
         with hp.open(vac_hepmc_filename, "w") as f:
