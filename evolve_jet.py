@@ -26,14 +26,6 @@ import plotting
 ############
 # Settings #
 ############
-# Analysis options
-analyze = False
-costheta_bins = np.linspace(-1, 1, 21)
-EECs = np.zeros(len(costheta_bins) - 1)
-E_bins = np.linspace(1, 15, 7)  #np.linspace(1, 15, 5)
-v1s = np.zeros(len(E_bins) - 1)
-v2s = np.zeros(len(E_bins) - 1)
-
 # Visualization options
 visualize = False
 
@@ -215,67 +207,8 @@ try:
             plotting.plot_trajectories(hard_event, z_axis="z", rap_max=None)
             plotting.plot_trajectories(hard_event, z_axis="etas", rap_max=None)
 
-        #####################
-        # Optional analysis #
-        #####################
-        if analyze:
-            logging.info('Analyzing...')
-
-            # Find jets
-            jets = pythia.pythia_to_fastjet(pythia_had=hard_event_hadrons, rap_max=1.5, R=0.4, pTmin=0.0)
-
-            logging.info(f"Found {len(jets)} jets.")
-
-            # Cut to jets we care about
-            analyzed_jets = []
-            for jet in jets:
-                if jet.pt() > 10:
-                    analyzed_jets.append(jet)
-
-            logging.debug("Computing observables for jets...")
-
-            # Compute observables for jets
-            for jet in analyzed_jets:
-                # EECs
-                logging.debug("Computing EEC...")
-                current_EECs, _ = observables.EEC(jet=jet, plot=False, bins=costheta_bins)
-                EECs = EECs + current_EECs
-
-                # vns
-                logging.debug("Computing intrajet v_n harmonic-ish thing...")
-                current_v1s, _ = observables.fastjet_intrajetvnish(jet=jet, pT_min=1, alpha_0=0, E_bins=E_bins, n=1)
-                v1s = v1s + (current_v1s)
-                current_v2s, _ = observables.fastjet_intrajetvnish(jet=jet, pT_min=1, alpha_0=0, E_bins=E_bins, n=2)
-                v2s = v2s + (current_v2s)
-
-
-                num_jets += 1
-
 except KeyboardInterrupt:
     pass
 except Exception as e:
     logging.exception(e)
-
-###########################
-# Post Evolution Analysis #
-###########################
-
-
-if analyze:
-    # Save result
-    logging.info("Saving en-route observables...")
-    np.savez("EECs.npz", EEC_sum=EECs, costheta_bins=costheta_bins, num_jets=np.array([num_jets]))
-    np.savez("intrajet_vns_med_ref.npz", v1_sum=v1s, v2_sum=v2s, E_bins=E_bins, num_jets=np.array([num_jets]))
-
-    # Plot
-    # plt.figure(figsize=(8, 6))
-    # plt.plot((costheta_bins[0:-1] + costheta_bins[1:]) / 2, EECs / num_jets, marker='o', linestyle='-', color='b', label='Weighted Avg EEC')
-    # plt.xlabel('cos(theta)', fontsize=14)
-    # plt.ylabel('Average EEC', fontsize=14)
-    # plt.title('Energy-Energy Correlation (EEC) vs. cos(theta)', fontsize=16)
-    # plt.legend(fontsize=12)
-    # plt.xscale("log")
-    # plt.yscale("log")
-    # plt.grid(True)
-    # plt.show()
 
