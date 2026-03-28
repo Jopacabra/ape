@@ -259,7 +259,7 @@ def collisional_delta(particle: hard_particles.Particle, medium: plasma.plasma_e
     # Gather particle and medium properties.
     p = particle.p3
     point = particle.coords
-    temp = medium.temp(point)
+    temp = medium.temp(point)[0]
     if temp < config.jet.T_HRG:  # Cancel evolution if we exit the plasma phase
         raise HadronGas()
     u = np.array([float(medium.x_vel(point)), float(medium.y_vel(point)), float(medium.z_vel(point))])
@@ -300,7 +300,7 @@ def collisional_delta_linear_gradients(particle: hard_particles.Particle, medium
     # Gather particle and medium properties.
     p = particle.p3
     point = particle.coords
-    temp = medium.temp(point)
+    temp = medium.temp(point)[0]
     if temp < config.jet.T_HRG:  # Cancel evolution if we exit the plasma phase
         raise HadronGas()
     u = np.array([float(medium.x_vel(point)), float(medium.y_vel(point)), float(medium.z_vel(point))])
@@ -346,7 +346,7 @@ def rad_delta(particle: hard_particles.Particle, medium: plasma.plasma_event, dt
     # Gather particle and medium properties.
     p = particle.p3
     point = particle.coords
-    temp = medium.temp(point)
+    temp = medium.temp(point)[0]
     if temp < config.jet.T_HRG:  # Cancel evolution if we exit the plasma phase
         raise HadronGas()
 
