@@ -262,7 +262,7 @@ def collisional_delta(particle: hard_particles.Particle, medium: plasma.plasma_e
     temp = medium.temp(point)[0]
     if temp < config.jet.T_HRG:  # Cancel evolution if we exit the plasma phase
         raise HadronGas()
-    u = np.array([float(medium.x_vel(point)[0]), float(medium.y_vel(point)[0]), float(medium.z_vel(point)[0])])
+    u = np.array([float(medium.x_vel(point)[0]), float(medium.y_vel(point)[0]), float(medium.z_vel(point))])
 
     # Get perp and parallel medium flow velocity
     uperp = utilities.perp_vec(a=u, b=p)
@@ -303,8 +303,8 @@ def collisional_delta_linear_gradients(particle: hard_particles.Particle, medium
     temp = medium.temp(point)[0]
     if temp < config.jet.T_HRG:  # Cancel evolution if we exit the plasma phase
         raise HadronGas()
-    u = np.array([float(medium.x_vel(point)[0]), float(medium.y_vel(point)[0]), float(medium.z_vel(point)[0])])
-    gradtemp_vec = np.array([float(medium.temp_grad_x(point)[0]), float(medium.temp_grad_y(point)[0]), float(medium.temp_grad_z(point)[0])])
+    u = np.array([float(medium.x_vel(point)[0]), float(medium.y_vel(point)[0]), float(medium.z_vel(point))])
+    gradtemp_vec = np.array([float(medium.temp_grad_x(point)[0]), float(medium.temp_grad_y(point)[0]), float(medium.temp_grad_z(point))])
 
     # Get perp and parallel medium flow velocity
     uperp = utilities.perp_vec(a=u, b=p)
