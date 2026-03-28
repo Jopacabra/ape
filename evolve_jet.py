@@ -30,15 +30,15 @@ import plotting
 analyze = False
 costheta_bins = np.linspace(-1, 1, 21)
 EECs = np.zeros(len(costheta_bins) - 1)
-E_bins = np.linspace(1, 15, 5)
+E_bins = np.linspace(1, 15, 7)  #np.linspace(1, 15, 5)
 v1s = np.zeros(len(E_bins) - 1)
 v2s = np.zeros(len(E_bins) - 1)
 
 # Visualization options
-visualize = True
+visualize = False
 
 # Event options
-num_hard_events = 1
+num_hard_events = 100000
 event_type = "load"
 plasma_file_path = "stored_events/Duke_avg/event_0/viscous_14_moments_evo.dat"
 
@@ -82,7 +82,7 @@ Select an event type and generate a plasma object.
 # Create a ws optical glauber plasma.
 if event_type == "ws":
     logging.info('Creating ws optical glauber plasma...')
-    plasma_object = collision.woods_saxon_plasma(b=5.5, T0=0.39, A=208, a=0.546, alpha=1, name=None,
+    plasma_object = collision.woods_saxon_plasma(b=5.5, T0=0.30, A=208, a=0.546, alpha=1, name=None,
                            resolution=5, rmax=10, tmin=0.5, tmax=None, umax=1, return_grids=False)
 
 # Create a gaussian optical glauber plasma.
@@ -120,6 +120,11 @@ try:
 
     hard_event_records = np.array([])
     for i in range(num_hard_events):
+        rng = np.random.default_rng()
+        random_label = int(rng.uniform(1000000000, 9999999999, 1)[0])
+        logging.info(
+            f"Starting new event {i + 1} of {num_hard_events} with label {random_label}."
+        )
         ##################
         # Jet Production #
         ##################
@@ -148,6 +153,10 @@ try:
         num_hard_particles = len(hard_event.particles)
         logging.info('Hard scattering done.')
 
+        logging.info('Hadronizing vacuum result...')
+        vacuum_event_hadrons = pythia.pp_shower_hadronize(hard_event, pythia_record)  # Adds shower history
+        logging.info('Vacuum hadronization complete.')
+
 
         #################
         # Jet Evolution #
@@ -170,23 +179,30 @@ try:
         Hadronize hard particles using Lund-String hadronization.
         """
         hard_event_hadrons = pythia.pp_shower_hadronize(hard_event, pythia_record)  # Adds shower history
-
+        # for p in hard_event_hadrons.particles():
+        #     print(p.statusHepMC())
 
         ################
         # Event output #
         ################
         """
-        Send the output of the Pythia event to a HepMC3 file.
+        Send the output of the Pythia events to a HepMC3 file.
         """
         hepmc_event = pythia.pythia_to_hepmc(hard_event_hadrons)
-        hepmc_filename = "hadronic_event.dat"
-        os.remove(hepmc_filename)
+        hepmc_filename = f"results/hepmc/m/{random_label}.dat"
+        # os.remove(hepmc_filename)
         with hp.open(hepmc_filename, "w") as f:
             f.write(hepmc_event)
 
-        graph_filename = "hadronic_event.svg"
-        os.remove(graph_filename)
-        hp.view.savefig(hepmc_event, graph_filename)
+        vac_hepmc_event = pythia.pythia_to_hepmc(vacuum_event_hadrons)
+        vac_hepmc_filename = f"results/hepmc/v/vac_{random_label}.dat"
+        # os.remove(hepmc_filename)
+        with hp.open(vac_hepmc_filename, "w") as f:
+            f.write(vac_hepmc_event)
+
+        # graph_filename = "hadronic_event.svg"
+        # os.remove(graph_filename)
+        # hp.view.savefig(hepmc_event, graph_filename)
 
         ##########################
         # Optional visualization #
@@ -196,8 +212,8 @@ try:
 
             # plotting.plot_trajectories(hard_event, z_axis=None, rap_max=1)
             plotting.plot_parton_hadron(hard_event=hard_event, hadrons=hard_event_hadrons, rap_max=1.5)
-            # plotting.plot_trajectories(hard_event, z_axis="z", rap_max=None)
-            # plotting.plot_trajectories(hard_event, z_axis="etas", rap_max=None)
+            plotting.plot_trajectories(hard_event, z_axis="z", rap_max=None)
+            plotting.plot_trajectories(hard_event, z_axis="etas", rap_max=None)
 
         #####################
         # Optional analysis #
@@ -208,19 +224,25 @@ try:
             # Find jets
             jets = pythia.pythia_to_fastjet(pythia_had=hard_event_hadrons, rap_max=1.5, R=0.4, pTmin=0.0)
 
+            logging.info(f"Found {len(jets)} jets.")
+
             # Cut to jets we care about
             analyzed_jets = []
             for jet in jets:
                 if jet.pt() > 10:
                     analyzed_jets.append(jet)
 
+            logging.debug("Computing observables for jets...")
+
             # Compute observables for jets
             for jet in analyzed_jets:
                 # EECs
+                logging.debug("Computing EEC...")
                 current_EECs, _ = observables.EEC(jet=jet, plot=False, bins=costheta_bins)
                 EECs = EECs + current_EECs
 
                 # vns
+                logging.debug("Computing intrajet v_n harmonic-ish thing...")
                 current_v1s, _ = observables.fastjet_intrajetvnish(jet=jet, pT_min=1, alpha_0=0, E_bins=E_bins, n=1)
                 v1s = v1s + (current_v1s)
                 current_v2s, _ = observables.fastjet_intrajetvnish(jet=jet, pT_min=1, alpha_0=0, E_bins=E_bins, n=2)
@@ -241,6 +263,7 @@ except Exception as e:
 
 if analyze:
     # Save result
+    logging.info("Saving en-route observables...")
     np.savez("EECs.npz", EEC_sum=EECs, costheta_bins=costheta_bins, num_jets=np.array([num_jets]))
     np.savez("intrajet_vns_med_ref.npz", v1_sum=v1s, v2_sum=v2s, E_bins=E_bins, num_jets=np.array([num_jets]))
 
