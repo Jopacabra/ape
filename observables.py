@@ -77,7 +77,7 @@ def EEC(jet: fastjet.PseudoJet=None, event: pythia8.Event=None, plot=False, pT_m
 
     return average_EEC, bins
 
-def hepmc_to_fastjet(hepmc_event: pyhepmc.GenEvent, R: float=0.4, rap_max: float=1.5, pTmin: float=0.0):
+def hepmc_to_fastjet(hepmc_event: pyhepmc.GenEvent, R: float=0.4, rap_min: float=0.0, rap_max: float=1.5, pTmin: float=0.0):
     """
     Function to run jetfinder on a HepMC event
     """
@@ -97,6 +97,8 @@ def hepmc_to_fastjet(hepmc_event: pyhepmc.GenEvent, R: float=0.4, rap_max: float
     ma = particles.status == 1  # Only consider final state particles
     # ma &= np.abs(particles.pid) == 211  # Only consider charged pions
     ma &= np.abs(rap) <= rap_max  # Cut on rapidity
+    if rap_min > 0.0:
+        ma &= np.abs(rap) > rap_min  # Cut on rapidity
     ma &= pT > pTmin  # Cut on transverse momentum
 
     # Iterate and make PseudoJets for fastjet.
@@ -118,10 +120,10 @@ def hepmc_to_fastjet(hepmc_event: pyhepmc.GenEvent, R: float=0.4, rap_max: float
 
     return jets
 
-def fastjet_intrajetvnish(jet: fastjet.PseudoJet=None, event: pythia8.Event=None, n=1, pT_min=5, alpha_0=None,
-                          E_bins=None):
+def fastjet_intrajetvnish_flow(jet: fastjet.PseudoJet=None, event: pythia8.Event=None, n=1, pT_min=5, flow="x",
+                          E_bins=None, phi_fence=0.2, rap_min=0.0, rap_max=1.5):
     """
-    Function to compute intrajet v_n harmonic using azimuthal angle about the jet axis.
+    Function to compute intrajet v_n harmonic with reference angle set to select on either x or z flow.
     """
 
     # Access final state particles
@@ -132,33 +134,45 @@ def fastjet_intrajetvnish(jet: fastjet.PseudoJet=None, event: pythia8.Event=None
     else:
         raise ValueError("Either event or fastjet_jet must be provided.")
 
-    # Get jet axis direction
+    # Get jet axis direction as unit vector
     jet_p = np.array([jet.px(), jet.py(), jet.pz()])
+    jet_p = jet_p / np.linalg.norm(jet_p)
+    jet_e = jet.e()
+    jet_rap = 0.5 * np.log((jet_e + jet_p[2]) / (jet_e - jet_p[2]))
+    jet_phi = np.arctan2(jet_p[1], jet_p[0])
 
-    # Defines the direction of zero azimuthal angle about jet axis (alpha = 0)
-    if alpha_0 is None:  # Pick a random direction
-        rng = np.random.default_rng()
-        ran_vec = np.array([rng.uniform(-1, 1), rng.uniform(-1, 1), rng.uniform(-1, 1)])
-        ran_vec = ran_vec   # Normalize
-        zero_alpha = utilities.perp_vec(ran_vec, jet_p)  # Component of ran_vec perpendicular to jet_p
-        zero_alpha = zero_alpha / np.linalg.norm(zero_alpha)  # Normalized unit vector
-    else:
-        alpha_0_vec = np.array([np.cos(alpha_0), np.sin(alpha_0), 0])
-        zero_alpha = utilities.perp_vec(alpha_0_vec, jet_p)  # Component of alpha_0_vec perpendicular to jet_p
-        zero_alpha = zero_alpha / np.linalg.norm(zero_alpha)  # Normalized unit vector
+    # Get lists for particle properties
+    phase = []
+    E_array = []
+
+    # Compute observable
+    if flow == "x":
+        # Find the unit vector perpendicular to jet_p and z-axis.
+        # alpha_0_vec = np.sign(jet_p[0]*jet_p[1])*np.cross(jet_p, np.array([0, 0, 1]))
+        xHat = np.array([1,0,0])
+        alpha_0_vec = np.sign(jet_p[0]) * (xHat - np.dot(xHat, jet_p) * jet_p)
+    elif flow == "z":
+        # Find the unit vector perpendicular to jet_p and x-axis.
+        # alpha_0_vec = (-1) * np.sign(jet_p[2]*jet_p[1])*np.cross(jet_p, np.array([1, 0, 0]))
+        zHat = np.array([0,0,1])
+        alpha_0_vec = np.sign(jet_p[2])*(zHat - np.dot(zHat, jet_p)*jet_p)
+    elif flow == "total":
+        yHat = np.array([0,1,0])
+        alpha_0_vec = np.sign(jet_p[1])*(jet_p[1]*jet_p - yHat)
+
+    alpha_0_vec = alpha_0_vec / np.linalg.norm(alpha_0_vec)
 
     # Compute cosine(alpha) and E of each particle.
-    phase = np.array([])
-    E_array = np.array([])
+
     for i, p1 in enumerate(particles):
         if p1.pt() < pT_min:
             continue
         p1_p = np.array([p1.px(), p1.py(), p1.pz()])  # Constituent particle direction
         p1_perp = utilities.perp_vec(p1_p, jet_p)  # Component of p1_p perpendicular to jet_p
         p1_perp = p1_perp / np.linalg.norm(p1_perp)  # Normalized unit vector
-        alpha = np.arccos(np.dot(zero_alpha, p1_perp))  # \vec{a}\cdot\vec{b} = ab \cos(\alpha), a = b = 1
-        phase = np.append(phase, np.cos(n*alpha))  # \cos(n * \alpha) phase factor for each particle
-        E_array = np.append(E_array, p1.e())
+        alpha = np.arccos(np.dot(alpha_0_vec, p1_perp))  # \vec{a}\cdot\vec{b} = ab \cos(\alpha), a = b = 1
+        phase.append(np.cos(n*alpha))  # \cos(n * \alpha) phase factor for each particle
+        E_array.append(p1.e())
 
     # Bin according to particle energy
     if E_bins is None:
@@ -167,8 +181,59 @@ def fastjet_intrajetvnish(jet: fastjet.PseudoJet=None, event: pythia8.Event=None
     phase_sum, _ = np.histogram(E_array, bins=E_bins, weights=phase)
 
     # Compute averages and return
-    avg_vns = np.nan_to_num((phase_sum / E_counts), nan=0.0)  # Sets nans from E_counts=0 to be 0.0.
+    avg_vns = phase_sum / E_counts  # Includes nans
 
     return avg_vns, E_bins
 
+def fastjet_intrajetvnish_harmonics_flow_total(jet: fastjet.PseudoJet=None, event: pythia8.Event=None, pT_min=5, flow="x"):
+    """
+    Function to compute intrajet v_n harmonic with reference angle set to select on transverse, longitudinal, or all flow.
+    """
 
+    # Access final state particles
+    if event is not None:
+        particles = [p for p in event if p.isFinal() and p.isCharged()]
+    elif jet is not None:
+        particles = [p for p in jet.constituents()]
+    else:
+        raise ValueError("Either event or fastjet_jet must be provided.")
+
+    # Get jet axis direction as unit vector
+    jet_p = np.array([jet.px(), jet.py(), jet.pz()])
+    jet_p = jet_p / np.linalg.norm(jet_p)
+
+    if flow == "x":
+        # Find the unit vector perpendicular to jet_p and z-axis.
+        alpha_0_vec = np.sign(jet_p[0]*jet_p[1])*np.cross(jet_p, np.array([0, 0, 1]))
+    elif flow == "z":
+        # Find the unit vector perpendicular to jet_p and x-axis.
+        alpha_0_vec = (-1) * np.sign(jet_p[2]*jet_p[1])*np.cross(jet_p, np.array([1, 0, 0]))
+    elif flow == "total":
+        alpha_0_vec = np.sign(jet_p[1])*(jet_p[1]*jet_p - np.array([0, 1, 0]))
+
+    alpha_0_vec = alpha_0_vec / np.linalg.norm(alpha_0_vec)
+
+    # Compute cosine(alpha) and E of each particle.
+    phase_1 = []
+    phase_2 = []
+    phase_3 = []
+    phase_4 = []
+    for i, p1 in enumerate(particles):
+        if p1.pt() < pT_min:
+            continue
+        p1_p = np.array([p1.px(), p1.py(), p1.pz()])  # Constituent particle direction
+        p1_perp = utilities.perp_vec(p1_p, jet_p)  # Component of p1_p perpendicular to jet_p
+        p1_perp = p1_perp / np.linalg.norm(p1_perp)  # Normalized unit vector
+        alpha = np.arccos(np.dot(alpha_0_vec, p1_perp))  # \vec{a}\cdot\vec{b} = ab \cos(\alpha), a = b = 1
+        phase_1.append(np.cos(1 * alpha))  # \cos(n * \alpha) phase factor for each particle
+        phase_2.append(np.cos(2 * alpha))  # \cos(n * \alpha) phase factor for each particle
+        phase_3.append(np.cos(3 * alpha))  # \cos(n * \alpha) phase factor for each particle
+        phase_4.append(np.cos(4 * alpha))  # \cos(n * \alpha) phase factor for each particle
+
+    # Bin according to particle energy
+    mean_phase_1 = np.mean(phase_1)
+    mean_phase_2 = np.mean(phase_2)
+    mean_phase_3 = np.mean(phase_3)
+    mean_phase_4 = np.mean(phase_4)
+
+    return mean_phase_1, mean_phase_2, mean_phase_3, mean_phase_4
