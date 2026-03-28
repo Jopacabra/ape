@@ -868,7 +868,7 @@ def temp_6th_sample(event, maxAttempts=5, time='i', batch=1000):
             targetTemp = temp_func(np.array([time, point[0], point[1]]))**6
 
             # Check if point under 2D temp PDF curve
-            if float(point[2]) < float(targetTemp):
+            if float(point[2]) < float(targetTemp[0]):
                 # If under curve, accept point and return
                 # print("Attempt " + str(attempt) + " successful with point " + str(i) + "!!!")
                 # print(point)
