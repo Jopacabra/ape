@@ -502,7 +502,7 @@ def perp_vec(a, b):
     # Magnitude^2 of p
     pp = np.dot(b, b)
 
-    # Subtract off component of u perpendicular to p
+    # Subtract off component of a perpendicular to b
     return a - (np.dot(a, b) / pp) * b
 
 # Get the component of vector a parallel to vector b.
@@ -549,3 +549,82 @@ def zeta(q=0, maxAttempts=5, batch=1000):
     print("Catastrophic error in zeta parameter sampling!")
     print("AHHHHHHHHHHHHHHH!!!!!!!!!!!")
     return 0
+
+
+def monte_carlo_causal_sphere_integral(interpolator, ref, dt, n_samples=10000):
+    """
+    Perform Monte Carlo integration over the causal sphere using a RegularGridInterpolator.
+
+    The causal sphere is defined by the lightlike condition:
+    0 = (t - t_ref)^2 - (x - x_ref)^2 - (y - y_ref)^2 - (z - z_ref)^2
+
+    Within a small time interval dt, we approximate the integral by sampling uniformly
+    on the future lightcone surface at time t_ref + dt.
+
+    Parameters
+    ----------
+    interpolator : scipy.interpolate.RegularGridInterpolator
+        The interpolator object for the medium properties
+    t_ref : float
+        Reference time coordinate
+    x_ref : float
+        Reference x coordinate
+    y_ref : float
+        Reference y coordinate
+    z_ref : float
+        Reference z coordinate
+    dt : float
+        Small time interval over which to integrate
+    n_samples : int, optional
+        Number of Monte Carlo samples to draw (default: 10000)
+
+    Returns
+    -------
+    float
+        The Monte Carlo estimate of the integral
+    """
+    t_ref, x_ref, y_ref, z_ref = ref
+
+    # Time coordinate on the causal sphere
+    t_new = t_ref + dt
+
+    # On the lightcone: dt^2 = dx^2 + dy^2 + dz^2
+    # So points on the sphere have distance t_ref from the reference point
+    # We integrate over points that could have sent a signal that arrives at time t_ref at this spatial point.
+    sphere_radius = t_ref
+
+    # Generate random points uniformly on a sphere
+    # Use the standard method: random direction on unit sphere scaled by radius
+    samples = np.random.normal(size=(n_samples, 3))
+
+    # Normalize to unit sphere, then scale by the causal radius
+    norms = np.linalg.norm(samples, axis=1, keepdims=True)
+    directions = samples / norms
+    sphere_points = directions * sphere_radius
+
+    # Translate to actual coordinates centered at (x_ref, y_ref, z_ref)
+    x_samples = x_ref + sphere_points[:, 0]
+    y_samples = y_ref + sphere_points[:, 1]
+    z_samples = z_ref + sphere_points[:, 2]
+
+    # Stack coordinates for interpolator evaluation
+    # RegularGridInterpolator expects points as (n_points, n_dims)
+    evaluation_points = np.stack([
+        np.full(n_samples, t_new),
+        x_samples,
+        y_samples,
+        z_samples
+    ], axis=1)
+
+    # Evaluate the interpolator at all points
+    values = interpolator(evaluation_points)
+
+    # The surface element on a sphere in 3D is: dS = R^2 sin(theta) dtheta dphi
+    # For a sphere of radius R, the total surface area is 4*pi*R^2
+    # The integral is: integral = (1/N) * sum(f(p_i)) * surface_area
+    surface_area = 4 * np.pi * sphere_radius ** 2
+
+    # Monte Carlo estimate
+    integral_estimate = np.mean(values) * surface_area
+
+    return integral_estimate
