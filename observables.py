@@ -77,7 +77,8 @@ def EEC(jet: fastjet.PseudoJet=None, event: pythia8.Event=None, plot=False, pT_m
 
     return average_EEC, bins
 
-def hepmc_to_fastjet(hepmc_event: pyhepmc.GenEvent, R: float=0.4, rap_min: float=0.0, rap_max: float=1.5, pTmin: float=0.0):
+def hepmc_to_fastjet(hepmc_event: pyhepmc.GenEvent, R: float=0.4, scheme=fastjet.WTA_pt_scheme,
+                     rap_min: float=0.0, rap_max: float=1.5, pTmin: float=0.0):
     """
     Function to run jetfinder on a HepMC event
     """
@@ -112,7 +113,7 @@ def hepmc_to_fastjet(hepmc_event: pyhepmc.GenEvent, R: float=0.4, rap_min: float
         pseudo_particles.append(fastjet.PseudoJet(px[i], py[i], pz[i], E[i]))  # px, py, pz, E
 
     # Jet algorithm definition
-    jet_def = fastjet.JetDefinition(fastjet.antikt_algorithm, R)
+    jet_def = fastjet.JetDefinition(fastjet.antikt_algorithm, R, scheme)
     logging.info("Jetfinding using FastJet algorithm: {}".format(jet_def))
 
     # Find jets
@@ -151,6 +152,9 @@ def fastjet_intrajetvnish_flow(jet: fastjet.PseudoJet=None, event: pythia8.Event
         # alpha_0_vec = np.sign(jet_p[0]*jet_p[1])*np.cross(jet_p, np.array([0, 0, 1]))
         xHat = np.array([1,0,0])
         alpha_0_vec = np.sign(jet_p[0]) * (xHat - np.dot(xHat, jet_p) * jet_p)
+    elif flow == "x2":
+        zHat = np.array([0,0,1])
+        alpha_0_vec = np.sign(jet_p[0] * jet_p[1]) * np.cross(jet_p, zHat)
     elif flow == "z":
         # Find the unit vector perpendicular to jet_p and x-axis.
         # alpha_0_vec = (-1) * np.sign(jet_p[2]*jet_p[1])*np.cross(jet_p, np.array([1, 0, 0]))
