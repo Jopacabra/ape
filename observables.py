@@ -160,6 +160,9 @@ def fastjet_intrajetvnish_flow(jet: fastjet.PseudoJet=None, event: pythia8.Event
         # alpha_0_vec = (-1) * np.sign(jet_p[2]*jet_p[1])*np.cross(jet_p, np.array([1, 0, 0]))
         zHat = np.array([0,0,1])
         alpha_0_vec = np.sign(jet_p[2])*(zHat - np.dot(zHat, jet_p)*jet_p)
+    elif flow == "z2":
+        xHat = np.array([1,0,0])
+        alpha_0_vec = -np.sign(jet_p[1] * jet_p[2]) * np.cross(jet_p, xHat)
     elif flow == "total":
         yHat = np.array([0,1,0])
         alpha_0_vec = np.sign(jet_p[1])*(jet_p[1]*jet_p - yHat)
