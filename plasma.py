@@ -490,8 +490,8 @@ class plasma_event:
 
         # Wrap in boost-invariant Milne adapters (now accept (...,3) or (...,4))
         self.temp = _BoostInvariantMilneAdapter(temp_3d)
-        self.x_vel = _BoostInvariantMilneAdapter(xvel_3d)
-        self.y_vel = _BoostInvariantMilneAdapter(yvel_3d)
+        self.x_vel = lambda x : xvel_3d(x[..., 0:3]) / np.cosh(x[..., 3])
+        self.y_vel = lambda x : yvel_3d(x[..., 0:3]) / np.cosh(x[..., 3])
         self.z_vel = (lambda x : np.tanh(x[..., 3]))
         self.temp_grad_x = _BoostInvariantMilneAdapter(gradxT_3d) if gradxT_3d is not None else _BoostInvariantMilneAdapter(lambda p: np.zeros(p.shape[:-1]))
         self.temp_grad_y = _BoostInvariantMilneAdapter(gradyT_3d) if gradyT_3d is not None else _BoostInvariantMilneAdapter(lambda p: np.zeros(p.shape[:-1]))
@@ -504,7 +504,7 @@ class plasma_event:
         self.grad_y_u_z = _BoostInvariantMilneAdapter(lambda x: 0)
         self.grad_z_u_x = _BoostInvariantMilneAdapter(lambda x: 0)
         self.grad_z_u_y = _BoostInvariantMilneAdapter(lambda x: 0)
-        self.grad_z_u_z = lambda x : 1 / (np.cosh(x[3]) * x[0])  # 1 / (tau cosh(eta_s))
+        self.grad_z_u_z = lambda x : 1 / (np.cosh(x[..., 3]) * x[..., 0])  # 1 / (tau cosh(eta_s))
 
         # Method to return the total magnitude of the velocity at a given point
         self.vel = lambda point: np.sqrt(self.x_vel(point) ** 2 + self.y_vel(point) ** 2 + self.z_vel(point) ** 2)
@@ -650,7 +650,7 @@ class plasma_event:
     # Returns the plot object to make integration elsewhere nicer.
     def plot(self, time=None, temp_resolution=100, vel_resolution=100, grad_resolution=100,
              temptype='contour', veltype='stream', gradtype='stream', plot_temp=True, plot_vel=True, plot_grad=False,
-             numContours=15, zoom=1):
+             numContours=15, zoom=1, eta_s=0):
         if time is None:  # Default to initial timestep.
             time = self.t0
 
@@ -687,12 +687,13 @@ class plasma_event:
             # We necessarily must set time equal to a constant to plot in 2D.
             x_space_vel = self.xspace(resolution=vel_resolution, fraction=zoom)
             vel_x_coords, vel_y_coords = np.meshgrid(x_space_vel, x_space_vel, indexing='ij')
+            vel_etas_coords = np.full_like(vel_x_coords, eta_s)
 
             # t_coords set to be an array matching the length of x_coords full of constant time
             vel_t_coords = np.full_like(vel_x_coords, time)
 
             # t_coords set to be an array matching the length of x_coords full of constant time
-            vel_points = np.transpose(np.array([vel_t_coords, vel_x_coords, vel_y_coords]), transposeAxes)
+            vel_points = np.transpose(np.array([vel_t_coords, vel_x_coords, vel_y_coords, vel_etas_coords]), transposeAxes)
 
             # Calculate velocities
             x_vels = self.x_vel(vel_points)
@@ -709,12 +710,13 @@ class plasma_event:
             # We necessarily must set time equal to a constant to plot in 2D.
             x_space_grad = self.xspace(resolution=grad_resolution, fraction=zoom)
             grad_x_coords, grad_y_coords = np.meshgrid(x_space_grad, x_space_grad, indexing='ij')
+            grad_etas_coords = np.full_like(grad_x_coords, eta_s)
 
             # t_coords set to be an array matching the length of x_coords full of constant time
             grad_t_coords = np.full_like(grad_x_coords, time)
 
             # t_coords set to be an array matching the length of x_coords full of constant time
-            grad_points = np.transpose(np.array([grad_t_coords, grad_x_coords, grad_y_coords]), transposeAxes)
+            grad_points = np.transpose(np.array([grad_t_coords, grad_x_coords, grad_y_coords, grad_etas_coords]), transposeAxes)
 
             # Calculate velocities
             grad_x = self.temp_grad_x(grad_points)
