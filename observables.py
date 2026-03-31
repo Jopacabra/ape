@@ -244,3 +244,43 @@ def fastjet_intrajetvnish_harmonics_flow_total(jet: fastjet.PseudoJet=None, even
     mean_phase_4 = np.mean(phase_4)
 
     return mean_phase_1, mean_phase_2, mean_phase_3, mean_phase_4
+
+
+# Multiplicity calculation from hepmc file
+def hepmc_N(hepmc_event: pyhepmc.GenEvent,
+              rap_min: float=0.0, rap_max: float=1.5,
+              pTmin: float=0.0, pTmax: float=100.0, pT_bins: np.ndarray=None):
+    """
+    Function to compute multiplicity as a function of pT for a HepMC event
+    """
+    # Access numpy interface of event object
+    particles = hepmc_event.numpy.particles
+
+    # Compute filter quantities
+    E = particles.e
+    px = particles.px
+    py = particles.py
+    pz = particles.pz
+    denom = E - pz
+    rap = 0.5 * np.log((E + pz) / denom)
+    pT = np.hypot(px, py)
+
+    # Filter
+    ma = particles.status == 1  # Only consider final state particles
+    # ma &= np.abs(particles.pid) == 211  # Only consider charged pions
+    ma &= np.abs(rap) <= rap_max  # Cut on rapidity
+    if rap_min > 0.0:
+        ma &= np.abs(rap) > rap_min  # Cut on rapidity
+    ma &= pT > pTmin  # Cut on transverse momentum
+    ma &= pT < pTmax  # Cut on transverse momentum
+
+    # Cut pT array
+    pT = pT[ma]
+
+    # Histogram and return
+    # Bin according to particle energy
+    if pT_bins is None:
+        pT_bins = np.linspace(pTmin, pTmax, 10)
+    pT_counts, _ = np.histogram(pT, bins=pT_bins)
+
+    return pT_counts, pT_bins
