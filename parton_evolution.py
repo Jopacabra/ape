@@ -5,7 +5,7 @@ import plasma
 import hard_particles
 import plasma_interaction
 import config
-import collision
+from plasma_interaction import NoMedium
 
 """
 This module takes a single hard_particles.Particle object and evolves it throughout the plasma phase of a 
@@ -84,7 +84,7 @@ def evolve_particle(particle : hard_particles.Particle, plasma_object : plasma.p
                 except plasma_interaction.HadronGas:
                     logging.info("Particle escaped plasma.")
                     break
-                except plasma.NoMedium:
+                except NoMedium:
                     logging.info("Particle escaped plasma grid.")
                     break
                 except Exception as e:
@@ -105,7 +105,7 @@ def evolve_particle(particle : hard_particles.Particle, plasma_object : plasma.p
                 except plasma_interaction.HadronGas:
                     logging.info("Particle escaped plasma.")
                     break
-                except plasma.NoMedium:
+                except NoMedium:
                     logging.info("Particle escaped plasma grid.")
                     break
                 except Exception as e:
@@ -155,3 +155,5 @@ def evolve_particle(particle : hard_particles.Particle, plasma_object : plasma.p
         logging.exception(e)
         logging.error(e)
         return False
+
+

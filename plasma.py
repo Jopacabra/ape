@@ -12,10 +12,6 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any, Callable, Optional, Protocol
 
-class NoMedium(Exception):
-    """
-    Raise to end evolution while computing an interaction if there is no event data for the coordinates of the particle
-    """
 
 class osu_hydro_file:
     def __init__(self, file_path, event_name=None, temp_conv_factor=0.1973269788):
@@ -213,7 +209,7 @@ class osu_hydro_file:
 
         # Interpolate data!
         # The final temperatures have been confirmed directly against absolute coordinates in data.
-        interp_temps = RegularGridInterpolator((self.tspace, self.xspace, self.xspace), temp_data)
+        interp_temps = RegularGridInterpolator((self.tspace, self.xspace, self.xspace), temp_data, bounds_error=False)
 
         return interp_temps
 
@@ -228,7 +224,7 @@ class osu_hydro_file:
 
         # Interpolate data!
         # The final temperatures have been confirmed directly against absolute coordinates in data.
-        interp_temp_grad_x = RegularGridInterpolator((self.tspace, self.xspace, self.xspace), temp_grad_x_data)
+        interp_temp_grad_x = RegularGridInterpolator((self.tspace, self.xspace, self.xspace), temp_grad_x_data, bounds_error=False)
 
         return interp_temp_grad_x
 
@@ -243,7 +239,7 @@ class osu_hydro_file:
 
         # Interpolate data!
         # The final temperatures have been confirmed directly against absolute coordinates in data.
-        interp_temp_grad_y = RegularGridInterpolator((self.tspace, self.xspace, self.xspace), temp_grad_y_data)
+        interp_temp_grad_y = RegularGridInterpolator((self.tspace, self.xspace, self.xspace), temp_grad_y_data, bounds_error=False)
 
         return interp_temp_grad_y
 
@@ -257,7 +253,7 @@ class osu_hydro_file:
 
         # Interpolate data!
         # The final velocities have been confirmed directly against absolute coordinates in data.
-        interp_x_vel = RegularGridInterpolator((self.tspace, self.xspace, self.xspace), x_vel_array)
+        interp_x_vel = RegularGridInterpolator((self.tspace, self.xspace, self.xspace), x_vel_array, bounds_error=False)
 
         return interp_x_vel
 
@@ -271,7 +267,7 @@ class osu_hydro_file:
 
         # Interpolate data!
         # The final velocities have been confirmed directly against absolute coordinates in data.
-        interp_y_vel = RegularGridInterpolator((self.tspace, self.xspace, self.xspace), y_vel_array)
+        interp_y_vel = RegularGridInterpolator((self.tspace, self.xspace, self.xspace), y_vel_array, bounds_error=False)
 
         return interp_y_vel
 
@@ -285,7 +281,7 @@ class osu_hydro_file:
         grad_x_u_x_data = self.grad_x_u_x_array()
 
         # Interpolate data!
-        interp_grad_x_u_x = RegularGridInterpolator((self.tspace, self.xspace, self.xspace), grad_x_u_x_data)
+        interp_grad_x_u_x = RegularGridInterpolator((self.tspace, self.xspace, self.xspace), grad_x_u_x_data, bounds_error=False)
 
         return interp_grad_x_u_x
 
@@ -299,7 +295,7 @@ class osu_hydro_file:
         grad_x_u_y_data = self.grad_x_u_y_array()
 
         # Interpolate data!
-        interp_grad_x_u_y = RegularGridInterpolator((self.tspace, self.xspace, self.xspace), grad_x_u_y_data)
+        interp_grad_x_u_y = RegularGridInterpolator((self.tspace, self.xspace, self.xspace), grad_x_u_y_data, bounds_error=False)
 
         return interp_grad_x_u_y
 
@@ -313,7 +309,7 @@ class osu_hydro_file:
         grad_y_u_x_data = self.grad_y_u_x_array()
 
         # Interpolate data!
-        interp_grad_y_u_x = RegularGridInterpolator((self.tspace, self.xspace, self.xspace), grad_y_u_x_data)
+        interp_grad_y_u_x = RegularGridInterpolator((self.tspace, self.xspace, self.xspace), grad_y_u_x_data, bounds_error=False)
 
         return interp_grad_y_u_x
 
@@ -327,7 +323,7 @@ class osu_hydro_file:
         grad_y_u_y_data = self.grad_y_u_y_array()
 
         # Interpolate data!
-        interp_grad_y_u_y = RegularGridInterpolator((self.tspace, self.xspace, self.xspace), grad_y_u_y_data)
+        interp_grad_y_u_y = RegularGridInterpolator((self.tspace, self.xspace, self.xspace), grad_y_u_y_data, bounds_error=False)
 
         return interp_grad_y_u_y
 
@@ -385,13 +381,12 @@ class _BoostInvariantMilneAdapter:
             arr = arr[..., :3]
         elif arr.shape[-1] != 3:
             raise ValueError(f"Expected points with last dim 3 or 4, got shape {arr.shape}")
-        try:
-            return self.field_3d(arr)
-        except ValueError as e:
-            # logging.exception(e)
-            logging.debug(e)
-            logging.debug("No event data at requested coordinate!")
-            raise NoMedium()
+        # try:
+        return self.field_3d(arr)
+        # except ValueError as e:
+        #     # logging.exception(e)
+        #     logging.debug(e)
+        #     logging.debug("No event data at requested coordinate!")
 
     @property
     def grid(self) -> Any:
@@ -450,6 +445,7 @@ class plasma_event:
     grad_z_u_x: Callable[[Any], np.ndarray] = field(init=False)
     grad_z_u_y: Callable[[Any], np.ndarray] = field(init=False)
     grad_z_u_z: Callable[[Any], np.ndarray] = field(init=False)
+    vel: Callable[[Any], np.ndarray] = field(init=False)
 
     # Domain metadata (set in __post_init__)
     timestep: float = field(init=False)
@@ -496,7 +492,7 @@ class plasma_event:
         self.temp = _BoostInvariantMilneAdapter(temp_3d)
         self.x_vel = _BoostInvariantMilneAdapter(xvel_3d)
         self.y_vel = _BoostInvariantMilneAdapter(yvel_3d)
-        self.z_vel = (lambda x : np.tanh(x[3]))
+        self.z_vel = (lambda x : np.tanh(x[..., 3]))
         self.temp_grad_x = _BoostInvariantMilneAdapter(gradxT_3d) if gradxT_3d is not None else _BoostInvariantMilneAdapter(lambda p: np.zeros(p.shape[:-1]))
         self.temp_grad_y = _BoostInvariantMilneAdapter(gradyT_3d) if gradyT_3d is not None else _BoostInvariantMilneAdapter(lambda p: np.zeros(p.shape[:-1]))
         self.temp_grad_z = _BoostInvariantMilneAdapter(lambda x : 0)
@@ -509,6 +505,9 @@ class plasma_event:
         self.grad_z_u_x = _BoostInvariantMilneAdapter(lambda x: 0)
         self.grad_z_u_y = _BoostInvariantMilneAdapter(lambda x: 0)
         self.grad_z_u_z = lambda x : 1 / (np.cosh(x[3]) * x[0])  # 1 / (tau cosh(eta_s))
+
+        # Method to return the total magnitude of the velocity at a given point
+        self.vel = lambda point: np.sqrt(self.x_vel(point) ** 2 + self.y_vel(point) ** 2 + self.z_vel(point) ** 2)
 
         # Set domains from the underlying interpolator grid when available
         try:
@@ -540,9 +539,7 @@ class plasma_event:
     def tspace(self, resolution=100):
         return np.arange(start=self.t0, stop=self.tf, step=((self.tf - self.t0) / resolution))
 
-    # Method to return the total magnitude of the velocity at a given point
-    def vel(self, point=None):
-        return np.sqrt(self.x_vel(point) ** 2 + self.y_vel(point) ** 2 + self.z_vel(point) ** 2)
+
 
     # Method to find the maximum temperature of a plasma object
     def max_temp(self, resolution=100, time='i'):
@@ -815,19 +812,19 @@ def tabulated_plasma(t_space, x_space, temp_values, x_vel_values, y_vel_values, 
     grad_y_u_y = np.gradient(y_vel_values, grid_step, axis=2)
 
     # Interpolate functions
-    interped_temp_function = RegularGridInterpolator((t_space, x_space, x_space), temp_values)
+    interped_temp_function = RegularGridInterpolator((t_space, x_space, x_space), temp_values, bounds_error=False)
 
-    interped_x_vel_function = RegularGridInterpolator((t_space, x_space, x_space), x_vel_values)
-    interped_y_vel_function = RegularGridInterpolator((t_space, x_space, x_space), y_vel_values)
+    interped_x_vel_function = RegularGridInterpolator((t_space, x_space, x_space), x_vel_values, bounds_error=False)
+    interped_y_vel_function = RegularGridInterpolator((t_space, x_space, x_space), y_vel_values, bounds_error=False)
 
-    interped_grad_x_function = RegularGridInterpolator((t_space, x_space, x_space), temp_grad_x_values)
-    interped_grad_y_function = RegularGridInterpolator((t_space, x_space, x_space), temp_grad_y_values)
+    interped_grad_x_function = RegularGridInterpolator((t_space, x_space, x_space), temp_grad_x_values, bounds_error=False)
+    interped_grad_y_function = RegularGridInterpolator((t_space, x_space, x_space), temp_grad_y_values, bounds_error=False)
 
-    interped_grad_x_u_x = RegularGridInterpolator((t_space, x_space, x_space), grad_x_u_x)
-    interped_grad_y_u_x = RegularGridInterpolator((t_space, x_space, x_space), grad_y_u_x)
+    interped_grad_x_u_x = RegularGridInterpolator((t_space, x_space, x_space), grad_x_u_x, bounds_error=False)
+    interped_grad_y_u_x = RegularGridInterpolator((t_space, x_space, x_space), grad_y_u_x, bounds_error=False)
 
-    interped_grad_x_u_y = RegularGridInterpolator((t_space, x_space, x_space), grad_x_u_y)
-    interped_grad_y_u_y = RegularGridInterpolator((t_space, x_space, x_space), grad_y_u_y)
+    interped_grad_x_u_y = RegularGridInterpolator((t_space, x_space, x_space), grad_x_u_y, bounds_error=False)
+    interped_grad_y_u_y = RegularGridInterpolator((t_space, x_space, x_space), grad_y_u_y, bounds_error=False)
 
     # Create and return plasma object
     plasma_object = plasma_event(temp_func=interped_temp_function,

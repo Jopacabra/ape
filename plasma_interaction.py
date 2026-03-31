@@ -12,6 +12,13 @@ class HadronGas(Exception):
     Raise to end evolution while computing an interaction if there is no event data for the coordinates of the particle
     """
 
+
+class NoMedium(Exception):
+    """
+    Raise to end evolution while computing an interaction if there is no event data for the coordinates of the particle
+    """
+
+
 # Function to return DeBye mass at a particular point
 # Ref - https://inspirehep.net/literature/1725162
 def mu_DeBye(T, g=None):
@@ -260,7 +267,9 @@ def collisional_delta(particle: hard_particles.Particle, medium: plasma.plasma_e
     p = particle.p3
     point = particle.coords
     temp = medium.temp(point)[0]
-    if temp < config.jet.T_HRG:  # Cancel evolution if we exit the plasma phase
+    if temp == np.nan:  # Cancel evolution if we exit the plasma space
+        raise NoMedium()
+    elif temp < config.jet.T_HRG:  # Cancel evolution if we exit the plasma phase
         raise HadronGas()
     u = np.array([float(medium.x_vel(point)[0]), float(medium.y_vel(point)[0]), float(medium.z_vel(point))])
 
@@ -301,7 +310,9 @@ def collisional_delta_linear_gradients(particle: hard_particles.Particle, medium
     p = particle.p3
     point = particle.coords
     temp = medium.temp(point)[0]
-    if temp < config.jet.T_HRG:  # Cancel evolution if we exit the plasma phase
+    if temp == np.nan:  # Cancel evolution if we exit the plasma space
+        raise NoMedium()
+    elif temp < config.jet.T_HRG:  # Cancel evolution if we exit the plasma phase
         raise HadronGas()
     u = np.array([float(medium.x_vel(point)[0]), float(medium.y_vel(point)[0]), float(medium.z_vel(point))])
     gradtemp_vec = np.array([float(medium.temp_grad_x(point)[0]), float(medium.temp_grad_y(point)[0]), float(medium.temp_grad_z(point))])
@@ -347,7 +358,9 @@ def rad_delta(particle: hard_particles.Particle, medium: plasma.plasma_event, dt
     p = particle.p3
     point = particle.coords
     temp = medium.temp(point)[0]
-    if temp < config.jet.T_HRG:  # Cancel evolution if we exit the plasma phase
+    if temp == np.nan:  # Cancel evolution if we exit the plasma space
+        raise NoMedium()
+    elif temp < config.jet.T_HRG:  # Cancel evolution if we exit the plasma phase
         raise HadronGas()
 
     # Get total pathlength traveled in the plasma
