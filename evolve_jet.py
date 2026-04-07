@@ -209,10 +209,27 @@ try:
         """
         logging.info('Evolving particles...')
         for particle in hard_event.particles:
+            logging.debug('Particle {}...'.format(particle.to_kwargs()))
+
+            #####################################
+            # Choose if we evolve this particle #
+            #####################################
+            # Far forward or backward rapidity particles can't be reasonably treated with our boost-invariance 2+1D medium.
+            if np.abs(particle.rap) > config.jet.RAP_MAX_EVOLVE:
+                logging.debug("Large rapidity. Skipping particle...")
+                continue
+            if not particle.isg and not particle.isq and not particle.isEWB:
+                logging.debug("Untreated particle. Skipping particle...")
+                continue
+
+            #########################
+            # Perform the evolution #
+            #########################
             pT0 = particle.pT
             parton_evolution.evolve_particle(particle, plasma_object)
             pTF = particle.pT
             logging.debug(f"Particle delta pT: {pTF - pT0} GeV")
+
         logging.info('Particle evolution complete')
 
 

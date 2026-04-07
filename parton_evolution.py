@@ -17,18 +17,6 @@ plasma.
 Returns True if the particle was evolved the full tau window requested. Returns false if it was not.
 """
 def evolve_particle(particle : hard_particles.Particle, plasma_object : plasma.plasma_event, tau=None):
-    logging.debug('Evolving particle {}...'.format(particle.to_kwargs()))
-
-    #####################################
-    # Choose if we evolve this particle #
-    #####################################
-    # Far forward or backward rapidity particles can't be reasonably treated with our boost-invariance 2+1D medium.
-    if np.abs(particle.rap) > config.jet.RAP_MAX_EVOLVE:
-        logging.debug("Large rapidity. Skipping particle...")
-        return False
-    if not particle.isg and not particle.isq and not particle.isEWB:
-        logging.debug("Untreated particle. Skipping particle...")
-        return False
 
     #########################
     # Perform the evolution #
