@@ -34,16 +34,14 @@ except:
 
 # Event by event sampling configuration
 class EBE:
-    NUM_EVENTS = int(cfg['mode']['NUM_EVENTS'])
     NUM_SAMPLES = int(cfg['mode']['NUM_SAMPLES'])
-    NUM_FRAGS = int(cfg['mode']['NUM_FRAGS'])
 
 
 # Mode configuration
 class mode:
     VARY_POINT = bool(cfg['mode']['VARY_POINT'])
     KEEP_EVENT = bool(cfg['mode']['KEEP_EVENT'])
-    KEEP_RECORD = bool(cfg['mode']['KEEP_RECORD'])
+    EVENT_TYPE = str(cfg['mode']['EVENT_TYPE'])
 
 
 class transport:
@@ -92,11 +90,8 @@ class jet:
     SHOWER = bool(cfg['jet']['SHOWER'])
     DTAU = float(cfg['jet']['DTAU'])
     T_HRG = float(cfg['jet']['T_HRG'])
-    T_UNHYDRO = float(cfg['jet']['T_UNHYDRO'])
     K_F_DRIFT = float(cfg['jet']['K_F_DRIFT'])
-    K_FG_DRIFT = float(cfg['jet']['K_FG_DRIFT'])
     K_BBMG = 1  #float(cfg['jet']['K_BBMG'])
-    PT_BIN = float(cfg['jet']['PT_BIN'])
     TYPE = str(cfg['jet']['TYPE'])
     RAP_MIN = float(cfg['jet']['RAP_MIN'])
     RAP_MAX = float(cfg['jet']['RAP_MAX'])

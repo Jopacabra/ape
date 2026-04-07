@@ -10,7 +10,7 @@ import hard_particles
 
 # Function to generate a pp hard scattering
 def scattering(pThatmin=config.jet.PTHATMIN, pThatmax=config.jet.PTHATMAX, do_shower=config.jet.SHOWER,
-               type="dijet", min_pt=1, get_all=True, tau=config.transport.hydro.TAU_FS, x=0, y=0, etas=0,
+               type=config.jet.TYPE, min_pt=1, get_all=True, tau=config.transport.hydro.TAU_FS, x=0, y=0, etas=0,
                selection_power=config.jet.BIAS_POWER,
                y_max=config.jet.RAP_MAX, y_min=config.jet.RAP_MIN, pythia_event=False, quiet=True):
     ############

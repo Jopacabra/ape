@@ -4,6 +4,7 @@ import sys
 import os
 import timeit
 from pathlib import Path
+import tempfile
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -31,10 +32,8 @@ import plotting
 visualize = False
 
 # Event options
-num_hard_events = 3334
-event_type = "load"
-plasma_file_path = "stored_events/Duke_avg/event_01/viscous_14_moments_evo.dat"
-
+num_hard_events = config.EBE.NUM_SAMPLES
+event_type = config.mode.EVENT_TYPE
 
 #############################
 # Logging and File Handling #
@@ -43,7 +42,7 @@ plasma_file_path = "stored_events/Duke_avg/event_01/viscous_14_moments_evo.dat"
 # Set running location as current directory - whatever the pwd was when running the script
 project_path = os.path.dirname(os.path.realpath(__file__))  # Gets directory the EBE.py script is located in
 home_path = os.getcwd()  # Gets working directory when script was run - results directory will be placed here
-results_path = home_path + "/results"  # Absolute path of dir where results files will live
+results_path = os.path.join(home_path, "results")  # Absolute path of dir where results files will live
 os.makedirs(results_path, exist_ok=True)  # Make results directory
 
 # Clear any existing logging handlers
@@ -68,43 +67,53 @@ logging.getLogger('matplotlib.ticker').disabled = True
 Path("results/hepmc/m").mkdir(parents=True, exist_ok=True)
 Path("results/hepmc/v").mkdir(parents=True, exist_ok=True)
 
+# Copy config file to the results directory
+config_file_path = os.path.join(project_path, 'user_config.yml')
+config_file_dest = os.path.join(results_path, "hepmc", 'user_config.yml')
+if not os.path.exists(config_file_dest):
+    logging.info(f"Copying {config_file_path} to {config_file_dest}")
+    os.system(f"cp {config_file_path} {config_file_dest}")
+
 # Create event folders, if necessary
-if event_type == "Duke_avg" or event_type == "Duke":
-    # Find which event to save as
-    Path(f"stored_events/{event_type}").mkdir(parents=True, exist_ok=True)
+if config.mode.KEEP_EVENT:
+    if event_type == "Duke_avg" or event_type == "Duke":
+        # Find which event to save as
+        Path(f"stored_events/{event_type}").mkdir(parents=True, exist_ok=True)
 
 
-    # Find the next event number
-    dir_path = Path(f"stored_events/{event_type}")
+        # Find the next event number
+        dir_path = Path(f"stored_events/{event_type}")
 
-    # Get all subdirectories matching the pattern event_xx
-    used_numbers = set()
+        # Get all subdirectories matching the pattern event_xx
+        used_numbers = set()
 
-    # Iterate and collect used numbers
-    for subdir in dir_path.iterdir():
-        if subdir.is_dir() and subdir.name.startswith("event_"):
-            try:
-                # Extract the number part after "event_"
-                num_str = subdir.name[6:]  # Skip "event_"
-                num = int(num_str)
-                if 0 <= num <= 99:  # Only consider valid two-digit numbers
-                    used_numbers.add(num)
-            except ValueError:
-                # Skip directories that don't match the expected format
-                pass
+        # Iterate and collect used numbers
+        for subdir in dir_path.iterdir():
+            if subdir.is_dir() and subdir.name.startswith("event_"):
+                try:
+                    # Extract the number part after "event_"
+                    num_str = subdir.name[6:]  # Skip "event_"
+                    num = int(num_str)
+                    if 0 <= num <= 99:  # Only consider valid two-digit numbers
+                        used_numbers.add(num)
+                except ValueError:
+                    # Skip directories that don't match the expected format
+                    pass
 
-    # Find the lowest unused number
-    for i in range(100):
-        if i not in used_numbers:
-            next_event_ii = i
-            break
+        # Find the lowest unused number
+        for i in range(100):
+            if i not in used_numbers:
+                next_event_ii = i
+                break
 
-    logging.info(f"Event saving as event_{next_event_ii:02d}.")
+        logging.info(f"Event saving as event_{next_event_ii:02d}.")
 
-    # Create event directory
-    event_dir = f"stored_events/{event_type}/event_{next_event_ii:02d}/"
-    Path(event_dir).mkdir(parents=True, exist_ok=False)
-
+        # Create event directory
+        event_dir = os.path.join(project_path, f"stored_events/{event_type}/event_{next_event_ii:02d}/")
+        Path(event_dir).mkdir(parents=True, exist_ok=False)
+else:
+    temp_dir_obj = tempfile.TemporaryDirectory()
+    event_dir = temp_dir_obj.name
 
 ########################
 # Soft Event Evolution #
@@ -131,7 +140,7 @@ elif event_type == "Duke":
 
     # Run event generation using config setttings
     # Note that we need write permissions in the working directory
-    plasma_object = collision.generate_event(working_dir=results_path, IC_type="Duke")
+    plasma_object = collision.generate_event(working_dir=event_dir, IC_type="Duke")
 
 # Create a sampled realistic DukeQCD generator event with averaged initial conditions
 elif event_type == "Duke_avg":
@@ -139,17 +148,17 @@ elif event_type == "Duke_avg":
 
     # Run event generation using config setttings
     # Note that we need write permissions in the working directory
-    plasma_object = collision.generate_event(working_dir=results_path, IC_type="Duke_avg")
+    plasma_object = collision.generate_event(working_dir=event_dir, IC_type="Duke_avg")
 
 # Load a saved Duke event
-elif event_type == "load":
-    logging.info(f"Loading Plasma from {plasma_file_path}...")
-    plasma_file = plasma.osu_hydro_file(plasma_file_path)
-    plasma_object = plasma.plasma_event(hydro_object=plasma_file)
-
 else:
-    logging.error("Invalid event type.")
-    raise ValueError("Invalid event type.")
+    try:
+        logging.info(f"Loading Plasma from {event_type}...")
+        plasma_file = plasma.osu_hydro_file(event_type)
+        plasma_object = plasma.plasma_event(hydro_object=plasma_file)
+    except:
+        logging.error("Invalid event type or path.")
+        raise ValueError("Invalid event type.")
 
 logging.info('Soft event complete created.')
 
@@ -278,6 +287,13 @@ try:
             plotting.plot_parton_hadron(hard_event=hard_event, hadrons=hard_event_hadrons, rap_max=1.5)
             plotting.plot_trajectories(hard_event, z_axis="z", rap_max=None)
             plotting.plot_trajectories(hard_event, z_axis="etas", rap_max=None)
+
+    try:
+        logging.debug("Cleaning up temporary event directory...")
+        temp_dir_obj.cleanup()
+    except NameError:
+        # No temp directory
+        pass
 
     logging.info("All events complete. Have a nice day! :)")
 

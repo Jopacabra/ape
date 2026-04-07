@@ -672,7 +672,7 @@ def generate_event(grid_max_target=config.transport.GRID_MAX_TARGET, grid_step=c
     logging.info('sampling surface with frzout')
 
     # sample particles and write to file
-    with open('particles_in.dat', 'w') as f:
+    with open(os.path.join(working_dir, 'particles_in.dat'), 'w') as f:
         for nsamples in range(1, maxsamples + 1):
             parts = frzout.sample(event_surface, hrg)
             if parts.size == 0:
@@ -710,7 +710,7 @@ def generate_event(grid_max_target=config.transport.GRID_MAX_TARGET, grid_step=c
     ####################################
 
     # read final particle data
-    with open('particles_out.dat', 'rb') as f:
+    with open(os.path.join(working_dir, 'particles_out.dat'), 'rb') as f:
 
         # partition UrQMD file into oversamples
         groups = groupby(f, key=lambda l: l.startswith(b'#'))
@@ -823,7 +823,7 @@ def generate_event(grid_max_target=config.transport.GRID_MAX_TARGET, grid_step=c
     logging.info('Event generation complete')
 
     # Open the hydro file and create file object for manipulation.
-    plasmaFilePath = 'viscous_14_moments_evo.dat'
+    plasmaFilePath = os.path.join(working_dir, 'viscous_14_moments_evo.dat')
 
     # Create event object
     # This asks the hydro file object to interpolate the relevant functions and pass them on to the plasma object.
