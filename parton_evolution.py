@@ -17,7 +17,7 @@ plasma.
 Returns True if the particle was evolved the full tau window requested. Returns false if it was not.
 """
 def evolve_particle(particle : hard_particles.Particle, plasma_object : plasma.plasma_event, tau=None):
-    logging.info('Evolving particle {}...'.format(particle.to_kwargs()))
+    logging.debug('Evolving particle {}...'.format(particle.to_kwargs()))
 
     #####################################
     # Choose if we evolve this particle #
@@ -82,10 +82,10 @@ def evolve_particle(particle : hard_particles.Particle, plasma_object : plasma.p
                 try:
                     rad_delta = plasma_interaction.rad_delta(particle, plasma_object, dtau)
                 except plasma_interaction.HadronGas:
-                    logging.info("Particle escaped plasma.")
+                    logging.debug("Particle escaped plasma.")
                     break
                 except NoMedium:
-                    logging.info("Particle escaped plasma grid.")
+                    logging.debug("Particle escaped plasma grid.")
                     break
                 except Exception as e:
                     logging.debug("Exception occurred at step {}".format(step_i))
@@ -103,10 +103,10 @@ def evolve_particle(particle : hard_particles.Particle, plasma_object : plasma.p
                     # coll_delta = plasma_interaction.collisional_delta_linear_gradients(particle, plasma_object, dtau)
 
                 except plasma_interaction.HadronGas:
-                    logging.info("Particle escaped plasma.")
+                    logging.debug("Particle escaped plasma.")
                     break
                 except NoMedium:
-                    logging.info("Particle escaped plasma grid.")
+                    logging.debug("Particle escaped plasma grid.")
                     break
                 except Exception as e:
                     logging.debug("Exception occurred at step {}".format(step_i))
@@ -128,7 +128,7 @@ def evolve_particle(particle : hard_particles.Particle, plasma_object : plasma.p
 
             # Freestream any remaining evolution time
             if steps_complete < num_steps:
-                logging.info("Freestreaming {} steps...".format(num_steps - steps_complete))
+                logging.debug("Freestreaming {} steps...".format(num_steps - steps_complete))
                 for step_j in range(steps_complete, num_steps):
                     particle.prop(dtau=dtau)
 
