@@ -11,6 +11,7 @@ import hard_particles
 # Function to generate a pp hard scattering
 def scattering(pThatmin=config.jet.PTHATMIN, pThatmax=config.jet.PTHATMAX, do_shower=config.jet.SHOWER,
                type="dijet", min_pt=1, get_all=True, tau=config.transport.hydro.TAU_FS, x=0, y=0, etas=0,
+               selection_power=config.jet.BIAS_POWER,
                y_max=config.jet.RAP_MAX, y_min=config.jet.RAP_MIN, pythia_event=False, quiet=True):
     ############
     # Settings #
@@ -157,7 +158,7 @@ def scattering(pThatmin=config.jet.PTHATMIN, pThatmax=config.jet.PTHATMAX, do_sh
     # This is more or less equivalent to sampling from a uniform distribution in pTHat
     # and recording an appropriate true pTHat-dependent weight from a known weight distribution.
     pythia_process.readString("PhaseSpace:bias2Selection = on")
-    pythia_process.readString("PhaseSpace:bias2SelectionPow = 4")
+    pythia_process.readString(f"PhaseSpace:bias2SelectionPow = {selection_power}")
 
     # Set up to do a user veto and send it in.
     myUserHooks = MyUserHooks()

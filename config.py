@@ -88,6 +88,7 @@ class jet:
     TAU_PROD = float(cfg['jet']['TAU_PROD'])
     PTHATMIN = float(cfg['jet']['PTHATMIN'])
     PTHATMAX = float(cfg['jet']['PTHATMAX'])
+    BIAS_POWER = int(cfg['jet']['BIAS_POWER'])
     SHOWER = bool(cfg['jet']['SHOWER'])
     DTAU = float(cfg['jet']['DTAU'])
     T_HRG = float(cfg['jet']['T_HRG'])
