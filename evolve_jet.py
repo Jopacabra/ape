@@ -91,6 +91,14 @@ elif event_type == "Duke":
     # Note that we need write permissions in the working directory
     plasma_object = collision.generate_event(working_dir=results_path, IC_type="Duke")
 
+# Create a sampled realistic DukeQCD generator event with averaged initial conditions
+elif event_type == "Duke_avg":
+    logging.info('Generating new averaged Duke event...')
+
+    # Run event generation using config setttings
+    # Note that we need write permissions in the working directory
+    plasma_object = collision.generate_event(working_dir=results_path, IC_type="Duke_avg")
+
 # Load a saved Duke event
 elif event_type == "load":
     logging.info("Loading Duke Average Plasma...")
