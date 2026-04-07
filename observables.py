@@ -90,8 +90,13 @@ def hepmc_to_fastjet(hepmc_event: pyhepmc.GenEvent, R: float=0.4, scheme=fastjet
     px = particles.px
     py = particles.py
     pz = particles.pz
-    denom = E - pz
-    rap = 0.5 * np.log((E + pz) / denom)
+    with np.errstate(divide='ignore', invalid='ignore', over='ignore'):
+        # Protect denominator first
+        denominator = np.where(E > pz, E - pz, np.finfo(float).tiny)
+        rap = 0.5 * np.log((E + pz) / denominator)
+
+    # # Handle remaining invalid values
+    # rap[~np.isfinite(rap)] = np.inf  # or np.nan
     pT = np.hypot(px, py)
 
     # Filter
@@ -122,7 +127,7 @@ def hepmc_to_fastjet(hepmc_event: pyhepmc.GenEvent, R: float=0.4, scheme=fastjet
     return jets
 
 def fastjet_intrajetvnish_flow(jet: fastjet.PseudoJet=None, event: pythia8.Event=None, n=1, pT_min=5, flow="x",
-                          E_bins=None, phi_fence=0.2, rap_min=0.0, rap_max=1.5):
+                          E_bins=None):
     """
     Function to compute intrajet v_n harmonic with reference angle set to select on either x or z flow.
     """
@@ -138,9 +143,6 @@ def fastjet_intrajetvnish_flow(jet: fastjet.PseudoJet=None, event: pythia8.Event
     # Get jet axis direction as unit vector
     jet_p = np.array([jet.px(), jet.py(), jet.pz()])
     jet_p = jet_p / np.linalg.norm(jet_p)
-    jet_e = jet.e()
-    jet_rap = 0.5 * np.log((jet_e + jet_p[2]) / (jet_e - jet_p[2]))
-    jet_phi = np.arctan2(jet_p[1], jet_p[0])
 
     # Get lists for particle properties
     phase = []
@@ -176,10 +178,15 @@ def fastjet_intrajetvnish_flow(jet: fastjet.PseudoJet=None, event: pythia8.Event
             continue
         p1_p = np.array([p1.px(), p1.py(), p1.pz()])  # Constituent particle direction
         p1_perp = utilities.perp_vec(p1_p, jet_p)  # Component of p1_p perpendicular to jet_p
-        p1_perp = p1_perp / np.linalg.norm(p1_perp)  # Normalized unit vector
+        p1_norm = np.linalg.norm(p1_perp)
+        if p1_norm == 0 or p1_norm == np.nan:
+            # This particle aligns exactly with the jet axis, so we cannot compute a value. Skip!
+            continue
+        p1_perp = p1_perp / p1_norm  # Normalized unit vector
+
         alpha = np.arccos(np.dot(alpha_0_vec, p1_perp))  # \vec{a}\cdot\vec{b} = ab \cos(\alpha), a = b = 1
         phase.append(np.cos(n*alpha))  # \cos(n * \alpha) phase factor for each particle
-        E_array.append(p1.e())
+        E_array.append(p1.pt())
 
     # Bin according to particle energy
     if E_bins is None:
@@ -188,9 +195,10 @@ def fastjet_intrajetvnish_flow(jet: fastjet.PseudoJet=None, event: pythia8.Event
     phase_sum, _ = np.histogram(E_array, bins=E_bins, weights=phase)
 
     # Compute averages and return
-    avg_vns = phase_sum / E_counts  # Includes nans
+    with np.errstate(invalid='ignore'):
+        avg_vns = phase_sum / E_counts  # Includes nans
 
-    return avg_vns, E_bins
+    return avg_vns, E_counts, E_bins
 
 def fastjet_intrajetvnish_harmonics_flow_total(jet: fastjet.PseudoJet=None, event: pythia8.Event=None, pT_min=5, flow="x"):
     """
@@ -262,7 +270,10 @@ def hepmc_N(hepmc_event: pyhepmc.GenEvent,
     py = particles.py
     pz = particles.pz
     denom = E - pz
-    rap = 0.5 * np.log((E + pz) / denom)
+    with np.errstate(divide='ignore', invalid='ignore', over='ignore'):
+        # Protect denominator first
+        denominator = np.where(E > pz, E - pz, np.finfo(float).tiny)
+        rap = 0.5 * np.log((E + pz) / denominator)
     pT = np.hypot(px, py)
 
     # Filter
