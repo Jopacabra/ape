@@ -38,7 +38,7 @@ def run_cmd(*args, quiet=False):
         if not quiet:
             outputCopyStdout = proc.stdout
             outputCopyStderr = proc.stderr
-            # Attempt to print the output from the trentoSubprocess.
+            # Attempt to print the output from the subprocess.
             logging.info('------------- {} Output ----------------'.format(processName))
             logging.debug('exit status:\n{}'.format(proc.returncode))
             logging.info('stdout:\n')
@@ -55,6 +55,9 @@ def run_cmd(*args, quiet=False):
                 if not line:
                     break
             logging.info('----------------------------------------')
+
+        # Wait for the process to complete
+        proc.wait()
 
         return proc, outputArray
 
