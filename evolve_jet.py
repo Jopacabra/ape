@@ -2,6 +2,7 @@
 import logging
 import sys
 import os
+import json
 import timeit
 from pathlib import Path
 import tempfile
@@ -23,6 +24,7 @@ import parton_evolution
 import collision
 import observables
 import plotting
+import event_dataset
 
 
 ############
@@ -75,6 +77,7 @@ if not os.path.exists(config_file_dest):
     os.system(f"cp {config_file_path} {config_file_dest}")
 
 # Create event folders, if necessary
+next_event_ii = 0
 if config.mode.KEEP_EVENT:
     if event_type == "Duke_avg" or event_type == "Duke":
         # Find which event to save as
@@ -153,9 +156,19 @@ elif event_type == "Duke_avg":
 # Load a saved Duke event
 else:
     try:
+        # Load hydro data
         logging.info(f"Loading Plasma from {event_type}...")
         plasma_file = plasma.osu_hydro_file(event_type)
-        plasma_object = plasma.plasma_event(hydro_object=plasma_file)
+
+        # Load event metadata
+        try:
+            with open(os.path.join(Path(event_type).parent, "observables.json"), "r") as f:  # Directory of .dat file
+                soft_dict = json.load(f)
+        except FileNotFoundError:
+            logging.error("No metadata found for this event.")
+            soft_dict = {}
+
+        plasma_object = plasma.plasma_event(hydro_object=plasma_file, meta=soft_dict)
     except:
         logging.error("Invalid event type or path.")
         raise ValueError("Invalid event type.")
@@ -253,9 +266,9 @@ try:
         # for p in hard_event_hadrons.particles():
         #     print(p.statusHepMC())
 
-        ################
-        # Event output #
-        ################
+        ######################
+        # HepMC Event output #
+        ######################
         """
         Send the output of the Pythia events to a HepMC3 file.
         """
@@ -273,9 +286,39 @@ try:
         with hp.open(vac_hepmc_filename, "w") as f:
             f.write(vac_hepmc_event)
 
-        # graph_filename = "hadronic_event.svg"
-        # os.remove(graph_filename)
-        # hp.view.savefig(hepmc_event, graph_filename)
+
+        # ====================================================================
+        # Hard Particle Dataset Management
+        # ====================================================================
+        # Initialize dataset manager for saving particle data
+        if config.mode.WRITE_DATAFRAME:
+            logging.info("Writing dataframe to hierarchical dataset")
+            dataset_manager = event_dataset.HierarchicalEventDataset(os.path.join(results_path, "particle_dataset"))
+            job_id = int(os.environ.get("CONDOR_CLUSTER_ID", "0"))  # Extract from HTC job ID
+
+            # Get soft event property dictionary, if present
+            if plasma_object.meta is not None:
+                soft_dict = plasma_object.meta
+            else:
+                soft_dict = {}
+
+            # Save particles to hierarchical dataset
+            dataset_manager.save_job_output(
+                job_id=job_id,
+                soft_event_seed=next_event_ii,
+                event_record=hard_event,
+                soft_event_props= soft_dict,
+                config_dict={
+                    'mode': {k: getattr(config.mode, k) for k in dir(config.mode) if not k.startswith('_')},
+                    'transport': {k: getattr(config.transport, k) for k in dir(config.transport) if
+                                  not k.startswith('_')},
+                    'jet': {k: getattr(config.jet, k) for k in dir(config.jet) if not k.startswith('_')},
+                    'constants': {k: getattr(config.constants, k) for k in dir(config.constants) if
+                                  not k.startswith('_')},
+                },
+            )
+
+            logging.info("Particle dataset saved successfully")
 
         ##########################
         # Optional visualization #

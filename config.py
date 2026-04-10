@@ -41,6 +41,7 @@ class EBE:
 class mode:
     VARY_POINT = bool(cfg['mode']['VARY_POINT'])
     KEEP_EVENT = bool(cfg['mode']['KEEP_EVENT'])
+    WRITE_DATAFRAME = bool(cfg['mode']['WRITE_DATAFRAME'])
     EVENT_TYPE = str(cfg['mode']['EVENT_TYPE'])
 
 

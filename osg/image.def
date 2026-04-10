@@ -36,7 +36,7 @@ From: hub.opensciencegrid.org/htc/ubuntu:24.04
     conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r
     conda update -y conda
     conda config --add channels conda-forge
-    conda create --yes --prefix /usr/conda/ape python=3.11.9 numpy scipy cython h5py pandas xarray pyyaml fastparquet conda-forge::pythia8 conda-forge::lhapdf conda-forge::fastjet conda-forge::pyhepmc
+    conda create --yes --prefix /usr/conda/ape python=3.11.9 numpy scipy cython h5py pandas pyyaml pyarrow conda-forge::pythia8 conda-forge::lhapdf jupyter matplotlib conda-forge::fastjet conda-forge::pyhepmc
     conda init
 
     # Install ape & submodules
