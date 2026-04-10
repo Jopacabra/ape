@@ -11,6 +11,7 @@ except:
 import h5py
 import math
 import os
+import json
 import shutil
 import logging
 import config
@@ -799,38 +800,29 @@ def generate_event(grid_max_target=config.transport.GRID_MAX_TARGET, grid_step=c
         event_dataframe['v_2'] = np.abs(event_dataframe['urqmd_re_q_2'][0]
                      + 1j * event_dataframe['urqmd_im_q_2'][0]) / flow_N
     except:
-        logging.info('Problem pre-computing v_2 and psi_2!!!')
+        logging.error('Problem pre-computing v_2 and psi_2!!!')
         pass
 
     # Compute
 
 
-    # # Save DukeQCD results file
-    # logging.info('Saving event UrQMD observables...')
-    # utilities.run_cmd(*['pwd'], quiet=False)
-    # logging.info(os.getcwd())
-    # logging.info(results)
-    # np.save('{}_observables.npy'.format(seed), results)
-    # try:
-    #     logging.info('Checking UrQMD observables file...')
-    #     check_results = np.load('{}_observables.npy'.format(seed))
-    #     logging.info(check_results)
-    # except Exception as error:
-    #     logging.info("UrQMD observables file check failed: {}".format(type(error).__name__))  # An error occurred: NameError
-    #     traceback.print_exc()
-    ##################
-
-    logging.info('Event generation complete')
+    # Save DukeQCD results file
+    logging.info('Saving event UrQMD observables...')
+    logging.debug(os.getcwd())
+    with open("observables.json", "w") as f:
+        json.dump(dict(event_dataframe), f)
 
     # Open the hydro file and create file object for manipulation.
+    logging.info('Creating plasma_event object...')
     plasmaFilePath = os.path.join(working_dir, 'viscous_14_moments_evo.dat')
 
     # Create event object
     # This asks the hydro file object to interpolate the relevant functions and pass them on to the plasma object.
     event = plasma.plasma_event(hydro_file_path=plasmaFilePath, meta=dict(event_dataframe))
 
-    # Go home
+    # Go home & announce
     os.chdir(og_dir)
+    logging.info('Event generation complete.')
 
     return event
 
