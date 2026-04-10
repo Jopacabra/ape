@@ -20,46 +20,39 @@ def run_cmd(*args, quiet=False):
     processName = str(args[0])
 
     try:
-        proc = subprocess.Popen(
+        shell_process = subprocess.run(
             cmd.split(),
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
             universal_newlines=True
         )
+
+        # Copy the output of the process
+        outputCopyStdout = shell_process.stdout  # Combined stdout and stderr
+
+        # Log at appropriate level
+        if not quiet:
+            logging.info('------------- {} Output ----------------'.format(processName))
+            logging.info('exit status:\n{}'.format(shell_process.returncode))
+            logging.info('stdout & stderr:\n')
+            logging.info(outputCopyStdout)
+            logging.info('------------- {} Output End ----------------'.format(processName))
+        else:
+            logging.debug('------------- {} Output ----------------'.format(processName))
+            logging.debug('exit status:\n{}'.format(shell_process.returncode))
+            logging.debug('stdout & stderr:\n')
+            logging.debug(outputCopyStdout)
+            logging.debug('------------- {} Output End ----------------'.format(processName))
+            pass
+
+        # Split output on linebreaks
+        outputArray = outputCopyStdout.splitlines()
+
+        return shell_process, outputArray
     except subprocess.CalledProcessError as e:
         logging.error(
             'command failed with status {}}:\n{}}'.format(e.returncode, e.output.strip('\n'))
         )
-        raise
-    else:
-        logging.debug(
-            'command completed successfully:\n{}'.format(proc.stdout)
-        )
-        outputArray = np.array([])
-        if not quiet:
-            outputCopyStdout = proc.stdout
-            outputCopyStderr = proc.stderr
-            # Attempt to print the output from the subprocess.
-            logging.info('------------- {} Output ----------------'.format(processName))
-            logging.debug('exit status:\n{}'.format(proc.returncode))
-            logging.info('stdout:\n')
-            for line in outputCopyStdout:
-                logging.info(line)
-                outputArray = np.append(outputArray, line)
-            logging.info('stderr:\n')
-            while True:
-                try:
-                    line = outputCopyStderr.readline()
-                except AttributeError:
-                    break
-                logging.debug(line)
-                if not line:
-                    break
-            logging.info('----------------------------------------')
-
-        # Wait for the process to complete
-        proc.wait()
-
-        return proc, outputArray
+        raise Exception
 
 
 # Function to round up to specified number of decimals
