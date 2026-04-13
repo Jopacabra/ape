@@ -11,8 +11,8 @@ Usage:
     # Load with multi-level filtering
     df = dataset.filter_and_load(
         soft_filters={'v_2': (0.1, 0.3), 'urqmd_dNch_deta': (200, 400)},
-        hard_filters={'pT': (5, 100), 'pdg_id': lambda x: np.abs(x) == 21},
-        columns=['pdg_id', 'px', 'py', 'pz', 'pT', 'rap'],
+        hard_filters={'pT': (5, 100), 'id': lambda x: np.abs(x) == 21},
+        columns=['id', 'px', 'py', 'pz', 'pT', 'rap'],
     )
 """
 
@@ -116,7 +116,7 @@ class HierarchicalEventDataset:
         })
         
         # Save to file
-        output_file = self.dataset_dir / f"job_{job_id:06d}_soft_{soft_event_seed:06d}.parquet"
+        output_file = self.dataset_dir / f"job_{job_id:06d}_soft_{soft_event_seed}.parquet"
         pq.write_table(table, str(output_file), compression='snappy')
         
         # Cache metadata for fast filtering
@@ -128,123 +128,131 @@ class HierarchicalEventDataset:
                     f"mult={soft_event_props.get('urqmd_dNch_deta', 0):.1f}")
         
         return str(output_file)
-    
+
     def filter_and_load(
-        self,
-        soft_filters: Optional[Dict[str, Any]] = None,
-        hard_filters: Optional[Dict[str, Any]] = None,
-        columns: Optional[List[str]] = None,
+            self,
+            soft_filters: Optional[Dict[str, Any]] = None,
+            hard_filters: Optional[Dict[str, Any]] = None,
+            columns: Optional[List[str]] = None,
+            soft_metadata_subset: Optional[List[str]] = None,
     ) -> pd.DataFrame:
         """
         Multi-level filtering for efficient data loading.
-        
-        STAGE 1: Filter files by soft event properties (metadata-only, very fast)
-        STAGE 2: Load particles from matching files (with column selection)
-        STAGE 3: Apply hard particle filters (row-level)
-        
+
         Parameters:
         -----------
         soft_filters : dict, optional
-            Filter soft event properties. Filters are applied FIRST to reduce
-            files read before loading any particle data.
-            
-            Examples:
-                {'v_2': (0.1, 0.3)}
-                {'urqmd_dNch_deta': (200, 400)}
-                {'impact_parameter': (0, 5)}
-            
-            Supports:
-            - Range filters (tuple/list of length 2): inclusive on both ends
-            - Exact match filters (single value)
-        
+            Filter soft event properties
         hard_filters : dict, optional
-            Filter hard particle properties. Applied AFTER loading, row-level.
-            
-            Examples:
-                {'pT': (5, 100)}
-                {'rap': (-1, 1)}
-                {'pdg_id': lambda x: np.abs(x) == 21}  # Custom functions
-            
-            Supports:
-            - Range filters: (min, max) inclusive
-            - Callable filters: any function that returns boolean array
-        
+            Filter hard particle properties
         columns : list, optional
-            Which particle columns to load (None = all).
-            Loading fewer columns saves memory and I/O.
-            
-            Example: ['pdg_id', 'px', 'py', 'pz', 'pT', 'rap']
-        
+            Which particle columns to load
+        soft_metadata_subset : list, optional
+            If provided, only load these specific soft properties
+            Example: ['v_2', 'mult', 'psi_2']
+
         Returns:
         --------
         pd.DataFrame
-            DataFrame with all particles matching both filter levels
-        
-        Examples:
-        ---------
-        # Soft filter only
-        df = dataset.filter_and_load(
-            soft_filters={'v_2': (0.1, 0.3)},
-        )
-        
-        # Soft + hard filters with column selection
-        df = dataset.filter_and_load(
-            soft_filters={
-                'urqmd_dNch_deta': (200, 400),
-                'impact_parameter': (0, 5),
-            },
-            hard_filters={
-                'pT': (5, 100),
-                'pdg_id': lambda x: np.abs(x) == 21,  # Gluons
-            },
-            columns=['pdg_id', 'px', 'py', 'pz', 'pT', 'rap'],
-        )
-        
-        # Complex particle selection
-        def is_charged_pion(pdg_id):
-            return np.abs(pdg_id) == 211
-        
-        df = dataset.filter_and_load(
-            soft_filters={'v_2': (0.1, 0.2)},
-            hard_filters={
-                'pdg_id': is_charged_pion,
-                'rap': lambda x: np.abs(x) < 2.4,
-            },
-        )
         """
-        
+
         # STAGE 1: Filter files by soft event properties (metadata-only)
         matching_files = self._filter_files_by_soft_props(soft_filters or {})
-        
+
         logging.info(f"Soft filters matched {len(matching_files)} of "
-                    f"{len(list(self.dataset_dir.glob('*.parquet')))} files")
-        
+                     f"{len(list(self.dataset_dir.glob('*.parquet')))} files")
+
         if not matching_files:
             logging.warning("No files matched soft filters")
             return pd.DataFrame()
-        
-        # STAGE 2: Load particles from matching files with column selection
+
+        # STAGE 2: Filter files by parquet stats of hard particle properties to see if we can skip whole files
+        matching_files = self._apply_hard_filters_with_stats(matching_files, hard_filters or {})
+
+        # STAGE 3: Determine which columns to load
+        load_columns = None
+        if columns is not None or soft_metadata_subset is not None:
+            load_columns = list(columns) if columns else []
+
+            # Always include soft_event_seed for tracking
+            if 'soft_event_seed' not in load_columns:
+                load_columns.append('soft_event_seed')
+
+            # Add specific soft metadata if requested
+            if soft_metadata_subset:
+                for prop in soft_metadata_subset:
+                    col_name = f'soft_{prop}'
+                    if col_name not in load_columns:
+                        load_columns.append(col_name)
+
+        # Load particles from matching files
         dfs = []
         for file_path in matching_files:
             try:
-                df_chunk = pd.read_parquet(file_path, columns=columns)
+                df_chunk = pd.read_parquet(file_path, columns=load_columns)
                 dfs.append(df_chunk)
             except Exception as e:
                 logging.warning(f"Failed to read {file_path}: {e}")
-        
+
         if not dfs:
             logging.warning("No particle data loaded")
             return pd.DataFrame()
-        
+
         df = pd.concat(dfs, ignore_index=True)
-        logging.info(f"Loaded {len(df)} particles from {len(matching_files)} files")
-        
-        # STAGE 3: Apply hard particle filters (row-level)
+
+        # Report memory usage
+        memory_mb = df.memory_usage(deep=True).sum() / 1024 ** 2
+        logging.info(f"Loaded {len(df)} particles from {len(matching_files)} files "
+                     f"({memory_mb:.1f} MB)")
+
+        # STAGE 4: Apply hard particle filters (row-level)
         if hard_filters:
             df = self._apply_hard_filters(df, hard_filters)
             logging.info(f"After hard filters: {len(df)} particles remaining")
-        
+
         return df
+
+    def get_soft_metadata_table(
+            self,
+            soft_filters: Optional[Dict[str, Any]] = None,
+    ) -> pd.DataFrame:
+        """
+        Get a lightweight table of soft event metadata only.
+
+        Useful for joining with particle data later.
+        Much more memory-efficient than loading soft_* columns for all particles.
+
+        Returns:
+        --------
+        pd.DataFrame with columns: soft_event_seed, v_2, mult etc.
+        """
+
+        matching_files = self._filter_files_by_soft_props(soft_filters or {})
+
+        soft_records = []
+        for file_path in matching_files:
+            table = pq.read_table(str(file_path))
+            metadata = table.schema.metadata or {}
+
+            record = {}
+            for key, value in metadata.items():
+                if isinstance(key, bytes):
+                    key = key.decode()
+                if isinstance(value, bytes):
+                    value = value.decode()
+
+                if key == 'soft_event_seed':
+                    record['soft_event_seed'] = int(value)
+                elif key.startswith('soft_'):
+                    prop_name = key[5:]
+                    try:
+                        record[prop_name] = float(value)
+                    except ValueError:
+                        record[prop_name] = value
+
+            soft_records.append(record)
+
+        return pd.DataFrame(soft_records)
     
     def _filter_files_by_soft_props(self, soft_filters: dict) -> List[str]:
         """
@@ -328,6 +336,39 @@ class HierarchicalEventDataset:
                     return False
         
         return True
+
+    def _apply_hard_filters_with_stats(self, matching_files: list, hard_filters: dict) -> list:
+        """Filter files based on Parquet column statistics first."""
+        if not hard_filters:
+            return matching_files
+
+        filtered_files = []
+        for file_path in matching_files:
+            try:
+                parquet_file = pq.ParquetFile(str(file_path))
+                stats = parquet_file.statistics
+
+                skip_file = False
+                for column, criterion in hard_filters.items():
+                    if column not in stats:
+                        continue
+
+                    col_stats = stats[column]
+                    if isinstance(criterion, (tuple, list)) and len(criterion) == 2:
+                        # If range is [min_want, max_want] and file has [min_file, max_file]
+                        # Skip if: max_file < min_want OR min_file > max_want
+                        if col_stats['max'] < criterion[0] or col_stats['min'] > criterion[1]:
+                            skip_file = True
+                            break
+
+                if not skip_file:
+                    filtered_files.append(file_path)
+
+            except Exception as e:
+                logging.debug(f"Could not read stats for {file_path}: {e}")
+                filtered_files.append(file_path)  # Include on error
+
+        return filtered_files
     
     @staticmethod
     def _apply_hard_filters(df: pd.DataFrame, hard_filters: dict) -> pd.DataFrame:
