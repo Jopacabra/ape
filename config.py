@@ -34,7 +34,7 @@ except:
 
 # Event by event sampling configuration
 class EBE:
-    NUM_SAMPLES = int(cfg['mode']['NUM_SAMPLES'])
+    NUM_HARD = int(cfg['mode']['NUM_HARD'])
 
 
 # Mode configuration

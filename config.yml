@@ -1,6 +1,6 @@
 mode:  # Operation mode flags
     VARY_POINT: True  # Determines if we vary the prod point or set it to (0,0)
-    NUM_SAMPLES: 100      # Number of hard jet production processes to run in each event
+    NUM_HARD: 100      # Number of hard jet production processes to run in each event
     KEEP_EVENT: False  # Keep plasma data for future analysis
     WRITE_DATAFRAME: True  # Whether to write a dataframe with initial and final parton properties
     EVENT_TYPE:  stored_events/Duke_avg/event_01/viscous_14_moments_evo.dat  # Event type string or path to hydro file
