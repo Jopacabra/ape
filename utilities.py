@@ -11,7 +11,7 @@ import utilities
 # Command to run process in the terminal
 # Stolen and modified from DukeQCD "run-events.py":
 # https://github.com/Duke-QCD/hic-eventgen
-def run_cmd(*args, quiet=False):
+def run_cmd(*args, quiet=False, deduplicate=False):
     """
     Run and log a Subprocess.
 
@@ -42,24 +42,33 @@ def run_cmd(*args, quiet=False):
     # Parse output into lines as a numpy array
     outputArray = np.array([line for line in output_text.split('\n') if line])
 
-    if not quiet:
-        logging.info('------------- {} Output Start ----------------'.format(processName))
-        logging.debug('exit status: {}'.format(proc.returncode))
-        logging.info('stdout:')
-        for line in outputArray:
-            logging.info(line)
-        logging.info('------------- {} Output End ----------------'.format(processName))
-    elif processName == 'afterburner':  # Special case to handle repeated output of urqmd
-        # Trim output and return only unique passages
-        pass
+    if quiet:
+        level = logging.DEBUG
     else:
-        logging.debug('------------- {} Output Start ----------------'.format(processName))
-        logging.debug('exit status: {}'.format(proc.returncode))
-        logging.debug('stdout:')
-        for line in outputArray:
-            logging.debug(line)
-        logging.debug('------------- {} Output End ----------------'.format(processName))
+        level = logging.INFO
 
+    if deduplicate:  # Special case for urqmd: trim duplicate lines and log to debug
+
+        unique_lines = []
+        seen = set()
+
+        for line in outputArray:
+            if line not in seen:
+                unique_lines.append(line)
+                seen.add(line)
+        logging.log(level, '------------- {} Output Start (Deduplicated) ----------------'.format(processName))
+        logging.log(level, 'exit status: {}'.format(proc.returncode))
+        logging.log(level, 'stdout (showing {} unique lines of {} total):'.format(len(unique_lines), len(outputArray)))
+        for line in unique_lines:
+            logging.log(level, line)
+        logging.log(level, '------------- {} Output End ----------------'.format(processName))
+    else:
+        logging.log(level, '------------- {} Output Start ----------------'.format(processName))
+        logging.log(level, 'exit status: {}'.format(proc.returncode))
+        logging.log(level, 'stdout:')
+        for line in outputArray:
+            logging.log(level, line)
+        logging.log(level, '------------- {} Output End ----------------'.format(processName))
 
     return proc, outputArray
 

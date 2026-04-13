@@ -704,7 +704,7 @@ def generate_event(grid_max_target=config.transport.GRID_MAX_TARGET, grid_step=c
     #########
 
     # hadronic afterburner
-    utilities.run_cmd(*['afterburner', 'particles_in.dat', 'particles_out.dat'], quiet=True)
+    utilities.run_cmd(*['afterburner', 'particles_in.dat', 'particles_out.dat'], quiet=True, deduplicate=True)
 
     ####################################
     # Post-Hadronic Transport Analysis #
