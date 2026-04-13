@@ -476,19 +476,8 @@ def generate_event(grid_max_target=config.transport.GRID_MAX_TARGET, grid_step=c
     int_t = '<i8'
     complex_t = '<c16'
 
-    # results "array" (one element)
-    # to be overwritten for event observables
-    results = np.empty((), dtype=[
-        ('initial_entropy', float_t),
-        ('nsamples', int_t),
-        ('dNch_deta', float_t),
-        ('dET_deta', float_t),
-        ('dN_dy', [(s, float_t) for (s, _) in species]),
-        ('mean_pT', [(s, float_t) for (s, _) in species]),
-        ('pT_fluct', [('N', int_t), ('sum_pT', float_t), ('sum_pTsq', float_t)]),
-        ('flow', [('N', int_t), ('Qn', complex_t, 8)]),
-    ])
-    results.fill(0)
+    # results dictionary
+    results = {}
 
     # UrQMD raw particle format
     parts_dtype = [
@@ -566,39 +555,20 @@ def generate_event(grid_max_target=config.transport.GRID_MAX_TARGET, grid_step=c
         npart = avg_dataframe['npart']
         ncoll = avg_dataframe['ncoll']
 
-        # Compute the normalization for the WS event from the averaged event
-        ws_norm = np.sum(ic_array) * float(config.transport.GRID_STEP **2)
-
-        # Create WS initial conditions with the chosen b, norm, and reduced thickness parameter p
-        arr, gs = woods_saxon_ic(b=chosen_b, norm=ws_norm, p=-1)
-        ic = arr
-
-        # Multiplicity
-        ws_mult = np.sum(ic) * float(config.transport.GRID_STEP **2)
-
-        ic_object = initial.IC(arr, gs)
-        e2, psi_e2 = utilities.ecc_more(ic_object, 2)
-        e3, psi_e3 = utilities.ecc_more(ic_object, 3)
-        e4, psi_e4 = utilities.ecc_more(ic_object, 4)
-        e5, psi_e5 = utilities.ecc_more(ic_object, 5)
-
-        event_dataframe = pd.DataFrame(
-            {
-                "b": [float(chosen_b)],
-                "mult": [float(ws_norm)],
-                "npart": [int(npart)],
-                "ncoll": [int(ncoll)],
-                "e2": [float(e2)],
-                "psi_e2": [float(psi_e2)],
-                "e3": [float(e3)],
-                "psi_e3": [float(psi_e3)],
-                "e4": [float(e4)],
-                "psi_e4": [float(psi_e4)],
-                "e5": [float(e5)],
-                "psi_e5": [float(psi_e5)],
-                "seed": [seed]
-            }
-        )
+    # Form a flat dictionary of the event results
+    results["b"] = float(event_dataframe['b'].iloc[0])
+    results["mult"] = float(event_dataframe['mult'].iloc[0])
+    results["npart"] = int(event_dataframe['npart'].iloc[0])
+    results["ncoll"] = int(event_dataframe['ncoll'].iloc[0])
+    results["e2"] = float(event_dataframe['e2'].iloc[0])
+    results["psi_e2"] = float(event_dataframe['psi_e2'].iloc[0])
+    results["e3"] = float(event_dataframe['e3'].iloc[0])
+    results["psi_e3"] = float(event_dataframe['psi_e3'].iloc[0])
+    results["e4"] = float(event_dataframe['e4'].iloc[0])
+    results["psi_e4"] = float(event_dataframe['psi_e4'].iloc[0])
+    results["e5"] = float(event_dataframe['e5'].iloc[0])
+    results["psi_e5"] = float(event_dataframe['psi_e5'].iloc[0])
+    results["seed"] = seed
 
     #################
     # Freestreaming #
@@ -686,7 +656,7 @@ def generate_event(grid_max_target=config.transport.GRID_MAX_TARGET, grid_step=c
                 break
 
     logging.info('produced %d particles in %d samples', nparts, nsamples)
-    # results['nsamples'] = nsamples
+    results['n_cf_samples'] = nsamples  # Number of Cooper-Fry freezeout samples
 
     if nparts == 0:
         raise StopEvent('no particles produced')
@@ -760,57 +730,36 @@ def generate_event(grid_max_target=config.transport.GRID_MAX_TARGET, grid_step=c
     for name, i in species:
         cut = (abs_ID == i) & midrapidity
         N = np.count_nonzero(cut)
-        results['dN_dy'][name] = N / nsamples
-        results['mean_pT'][name] = (0. if N == 0 else pT[cut].mean())
+        results[f'dN_dy_{name}'] = N / nsamples
+        results[f'mean_pT_{name}'] = (0. if N == 0 else pT[cut].mean())
 
     pT_alice = pT[charged & (abs_eta < .8) & (.15 < pT) & (pT < 2.)]
-    results['pT_fluct']['N'] = pT_alice.size
-    results['pT_fluct']['sum_pT'] = pT_alice.sum()
-    results['pT_fluct']['sum_pTsq'] = np.inner(pT_alice, pT_alice)
+    results['pT_fluct_N'] = pT_alice.size
+    results['pT_fluct_sum_pT'] = pT_alice.sum()
+    results['pT_fluct_sum_pTsq'] = np.inner(pT_alice, pT_alice)
 
     phi_alice = phi[charged & (abs_eta < .8) & (.2 < pT) & (pT < 5.)]
-    results['flow']['N'] = phi_alice.size
-    results['flow']['Qn'] = [
-        np.exp(1j * n * phi_alice).sum()
-        for n in range(1, results.dtype['flow']['Qn'].shape[0] + 1)
-    ]
+    flow_N = phi_alice.size
+    results['flow_N'] = flow_N
 
-    # Add soft observables to pandas dataframe for ease of access
-    for i in np.arange(1, len(results['flow']['Qn'])):  # Add in all flow vectors
-        event_dataframe['urqmd_re_q_{}'.format(i)] = np.real(results['flow']['Qn'][i-1])
-        event_dataframe['urqmd_im_q_{}'.format(i)] = np.imag(results['flow']['Qn'][i-1])
-    event_dataframe['urqmd_flow_N'] = results['flow']['N']  # Total number of particles for flow sum
-    event_dataframe['urqmd_dNch_deta'] = results['dNch_deta']  # Number of charged particles diff in pseudorapidity
-    event_dataframe['initial_entropy'] = results['initial_entropy']  # Initial entropy from Trento
-    event_dataframe['urqmd_nsamples'] = results['nsamples']  # Number of Cooper-Frye samples
-    for name, i in species:
-        event_dataframe['urqmd_dN_dy_{}'.format(name)] = results['dN_dy'][name]
-        event_dataframe['urqmd_mean_pT_{}'.format(name)] = results['mean_pT'][name]
-
-    event_dataframe['urqmd_pT_fluct_N'] = results['pT_fluct']['N']
-    event_dataframe['urqmd_pT_fluct_sum_pT'] = results['pT_fluct']['sum_pT']
-    event_dataframe['urqmd_pT_fluct_sum_pTsq'] = results['pT_fluct']['sum_pTsq']
-    event_dataframe['urqmd_dET_deta'] = results['dET_deta']
-
-    # Try to pre-compute v_2 and psi_2 of soft particles
+    # Add soft flow vectors to result dictionary
     try:
-        flow_N = event_dataframe['urqmd_flow_N'][0]
-        event_dataframe['psi_2'] = np.angle(event_dataframe['urqmd_re_q_2'][0]
-                         + 1j * event_dataframe['urqmd_im_q_2'][0])
-        event_dataframe['v_2'] = np.abs(event_dataframe['urqmd_re_q_2'][0]
-                     + 1j * event_dataframe['urqmd_im_q_2'][0]) / flow_N
+        for n in np.arange(1, 8):  # Add in all flow vectors
+            phases = np.exp(1j * n * phi_alice).sum()
+
+            results[f'psi_{n}'] = np.angle(np.real(phases)
+                                        + 1j * np.imag(phases))
+            results[f'v_{n}'] = np.abs(np.real(phases)
+                                    + 1j * np.imag(phases)) / flow_N
     except:
         logging.error('Problem pre-computing v_2 and psi_2!!!')
         pass
-
-    # Compute
-
 
     # Save DukeQCD results file
     logging.info('Saving event UrQMD observables...')
     logging.debug(os.getcwd())
     with open("observables.json", "w") as f:
-        json.dump(dict(event_dataframe), f)
+        json.dump(results, f)
 
     # Open the hydro file and create file object for manipulation.
     logging.info('Creating plasma_event object...')
