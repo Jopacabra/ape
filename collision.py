@@ -41,7 +41,19 @@ class StopEvent(Exception):
 
 # Function that generates a new Trento collision event with parameters from config file.
 # Returns the Trento output file name.
-def runTrento(outputFile=False, randomSeed=None, numEvents=1, quiet=False, output='initial.hdf', bmin=None, bmax=None):
+def runTrento(randomSeed=None, numEvents=1, quiet=False, output=None,
+              bmin=config.transport.trento.BMIN, bmax=config.transport.trento.BMAX,
+              grid_step=config.transport.GRID_STEP, grid_max=config.transport.GRID_MAX_TARGET,
+              norm=config.transport.trento.NORM,
+              cross_section=config.transport.trento.CROSS_SECTION,
+              nucleon_width=config.transport.trento.NUCLEON_WIDTH,
+              p=config.transport.trento.P,
+              k=config.transport.trento.K,
+              v=config.transport.trento.V,
+              nc=config.transport.trento.NC,
+              dmin=config.transport.trento.DMIN,
+              return_process=False):
+
     # Make sure there's no file where we want to stick it.
     try:
         os.remove(output)
@@ -49,50 +61,38 @@ def runTrento(outputFile=False, randomSeed=None, numEvents=1, quiet=False, outpu
         shutil.rmtree(output)
     except FileNotFoundError:
         pass
-
-    # Create Trento command arguments
-    # bmin and bmax control min and max impact parameter. Set to same value for specific b.
-    # projectile1 and projectile2 control nucleon number and such for colliding nuclei.
-    # numEvents determines how many to run and spit out a file for. Will be labeled like "0.dat", "1.dat" ...
-
-    # nucleon width default from DukeQCD was
-    # nucleon_width = 0.5  # in fm
-    # We have elected to keep this default.
-
-    # grid_step detfault for DukeQCD was
-    # grid_step = .15*np.min([nucleon_width])  # In fm
-    # for better run-time and effectiveness, we've selected a default of 0.1 fm
-
-    # Maximum grid size was by default 15 fm in DukeQCD. We have elected to keep this.
-    # grid_max_target = 15  # In fm
+    except TypeError:
+        pass
 
     # Generate Trento command argument list
-    trentoCmd = ['trento', '--number-events {}'.format(numEvents),
-                 '--grid-step {} --grid-max {}'.format(config.transport.GRID_STEP, config.transport.GRID_MAX_TARGET)]
-
-    # Append any supplied commands in the proper order
-    trentoCmd.append('--projectile {}'.format(config.transport.trento.PROJ1))
-    trentoCmd.append('--projectile {}'.format(config.transport.trento.PROJ2))
-    if bmin is not None:
-        trentoCmd.append('--b-min {}'.format(bmin))  # Minimum impact parameter (in fm ???)
-    elif config.transport.trento.BMIN is not None:
-        trentoCmd.append('--b-min {}'.format(config.transport.trento.BMIN))
-    if bmax is not None:
-        trentoCmd.append('--b-max {}'.format(bmax))  # Maximum impact parameter (in fm ???)
-    elif config.transport.trento.BMAX is not None:
-        trentoCmd.append('--b-max {}'.format(config.transport.trento.BMAX))
-    if outputFile:
-        trentoCmd.append('--output {}'.format(output))  # Output file name
+    trentoCmd = ['trento']
     if randomSeed is not None:
         trentoCmd.append('--random-seed {}'.format(int(randomSeed)))  # Random seed for repeatability
-    trentoCmd.append('--normalization {}'.format(config.transport.trento.NORM))
-    trentoCmd.append('--cross-section {}'.format(config.transport.trento.CROSS_SECTION))
-    trentoCmd.append('--nucleon-width {}'.format(config.transport.trento.NUCLEON_WIDTH))
-    trentoCmd.append('--reduced-thickness {}'.format(config.transport.trento.P))
-    trentoCmd.append('--fluctuation {}'.format(config.transport.trento.K))
-    trentoCmd.append('--constit-width {}'.format(config.transport.trento.V))
-    trentoCmd.append('--constit-number {}'.format(config.transport.trento.NC))
-    trentoCmd.append('--nucleon-min-dist {}'.format(config.transport.trento.DMIN))
+    trentoCmd.append(f'--number-events {numEvents}')  # Number of events to generate
+    trentoCmd.append('--projectile {}'.format(config.transport.trento.PROJ1))  # Collision projectile 1
+    trentoCmd.append('--projectile {}'.format(config.transport.trento.PROJ2))  # Collision projectile 2
+
+    # File output options
+    if output is not None:
+        trentoCmd.append('--output {}'.format(output))  # Output file name
+
+    # Numerical grid options
+    trentoCmd.append(f'--grid-step {grid_step}')  # Grid step size in fm
+    trentoCmd.append(f'--grid-max {grid_max}')  # Grid max size in fm
+
+    # Physical Options
+    if bmin is not None:
+        trentoCmd.append('--b-min {}'.format(bmin))  # Minimum impact parameter (in fm)
+    if bmax is not None:
+        trentoCmd.append('--b-max {}'.format(bmax))  # Maximum impact parameter (in fm)
+    trentoCmd.append('--normalization {}'.format(norm))
+    trentoCmd.append('--cross-section {}'.format(cross_section))
+    trentoCmd.append('--nucleon-width {}'.format(nucleon_width))
+    trentoCmd.append('--reduced-thickness {}'.format(p))
+    trentoCmd.append('--fluctuation {}'.format(k))
+    trentoCmd.append('--constit-width {}'.format(v))
+    trentoCmd.append('--constit-number {}'.format(nc))
+    trentoCmd.append('--nucleon-min-dist {}'.format(dmin))
     trentoCmd.append('--ncoll')
 
 
@@ -102,7 +102,7 @@ def runTrento(outputFile=False, randomSeed=None, numEvents=1, quiet=False, outpu
         logging.info('format: event_number impact_param npart ncoll mult e2_re e2_im e3_re e3_im e4_re e4_im e5_re e5_im')
     subprocess, output = utilities.run_cmd(*trentoCmd, quiet=quiet)
 
-    # Parse output and pass to dataframe.
+    # Parse shell output and pass to dataframe.
     first = True
     for line in output:
         trentoOutput = line.split()
@@ -111,7 +111,7 @@ def runTrento(outputFile=False, randomSeed=None, numEvents=1, quiet=False, outpu
                 {
                     "event": [int(trentoOutput[0])],
                     "b": [float(trentoOutput[1])],
-                    "npart": [float(trentoOutput[2])],
+                    "npart": [int(trentoOutput[2])],
                     "ncoll": [float(trentoOutput[3])],
                     "mult": [float(trentoOutput[4])],
                     "e2_re": [float(trentoOutput[5])],
@@ -144,133 +144,50 @@ def runTrento(outputFile=False, randomSeed=None, numEvents=1, quiet=False, outpu
         resultsDataFrame['e5'] = np.sqrt(resultsDataFrame['e5_re'] ** 2 + resultsDataFrame['e5_im'] ** 2)
 
     # Pass on result file name, trentoSubprocess data, and dataframe.
-    return resultsDataFrame.drop(labels='event', axis=1), output, subprocess
-
-
-# Function that generates a new Trento collision event with given parameters.
-# Returns the Trento output file name.
-def runTrentoLone(bmin=None, bmax=None, projectile1='Pb', projectile2='Pb', outputFile=False, randomSeed=None,
-              normalization=None, crossSection=None, numEvents=1, quiet=False, grid_step=0.1, grid_max_target=15,
-              nucleon_width=0.5, filename='initial.hdf'):
-    # Make sure there's no file where we want to stick it.
-    try:
-        os.remove(filename)
-    except FileNotFoundError:
-        pass
-
-    # Create Trento command arguments
-    # bmin and bmax control min and max impact parameter. Set to same value for specific b.
-    # projectile1 and projectile2 control nucleon number and such for colliding nuclei.
-    # numEvents determines how many to run and spit out a file for. Will be labeled like "0.dat", "1.dat" ...
-
-    # nucleon width default from DukeQCD was
-    # nucleon_width = 0.5  # in fm
-    # We have elected to keep this default.
-
-    # grid_step detfault for DukeQCD was
-    # grid_step = .15*np.min([nucleon_width])  # In fm
-    # for better run-time and effectiveness, we've selected a default of 0.1 fm
-
-    # Maximum grid size was by default 15 fm in DukeQCD. We have elected to keep this.
-    # grid_max_target = 15  # In fm
-
-    # Generate Trento command argument list
-    trentoCmd = ['trento', '--number-events {}'.format(numEvents),
-                 '--grid-step {} --grid-max {}'.format(grid_step, grid_max_target)]
-
-    # Append any supplied commands in the proper order
-    if projectile1 is not None:
-        trentoCmd.append('--projectile {}'.format(projectile1))
-    if projectile2 is not None:
-        trentoCmd.append('--projectile {}'.format(projectile2))
-    if bmin is not None:
-        trentoCmd.append('--b-min {}'.format(bmin))  # Minimum impact parameter (in fm ???)
-    if bmax is not None:
-        trentoCmd.append('--b-max {}'.format(bmax))  # Maximum impact parameter (in fm ???)
-    if outputFile:
-        trentoCmd.append('--output {}'.format(filename))  # Output file name
-    if randomSeed is not None:
-        trentoCmd.append('--random-seed {}'.format(int(randomSeed)))  # Random seed for repeatability
-    if normalization is not None:
-        trentoCmd.append('--normalization {}'.format(normalization))  # Should be fixed by comp. to data multiplicity
-    if crossSection is not None:
-        trentoCmd.append('--cross-section {}'.format(crossSection))  # fm^2: http://qcd.phy.duke.edu/trento/usage.html
-
-    trentoCmd.append('--nucleon-width {}'.format(nucleon_width))
-    trentoCmd.append('--ncoll')
-
-
-    # Run Trento command
-    # Note star unpacks the list to pass the command list as arguments
-    if not quiet:
-        logging.info('format: event_number impact_param npart mult e2_re e2_im e3_re e3_im e4_re e4_im e5_re e5_im')
-    subprocess, output = utilities.run_cmd(*trentoCmd, quiet=quiet)
-
-    # Parse output and pass to dataframe.
-    for line in output:
-        trentoOutput = line.split()
-        try:
-            trentoDataFrame = pd.DataFrame(
-                {
-                    "event": [int(trentoOutput[0])],
-                    "b": [float(trentoOutput[1])],
-                    "npart": [float(trentoOutput[2])],
-                    "ncoll": [float(trentoOutput[3])],
-                    "mult": [float(trentoOutput[4])],
-                    "e2_re": [float(trentoOutput[5])],
-                    "e2_im": [float(trentoOutput[6])],
-                    "psi_e2": [float((1/2) * np.arctan2(float(trentoOutput[6]), float(trentoOutput[5])))],
-                    "e3_re": [float(trentoOutput[7])],
-                    "e3_im": [float(trentoOutput[8])],
-                    "psi_e3": [float((1/3) * np.arctan2(float(trentoOutput[8]), float(trentoOutput[7])))],
-                    "e4_re": [float(trentoOutput[9])],
-                    "e4_im": [float(trentoOutput[10])],
-                    "psi_e4": [float((1/4) * np.arctan2(float(trentoOutput[10]), float(trentoOutput[9])))],
-                    "e5_re": [float(trentoOutput[11])],
-                    "e5_im": [float(trentoOutput[12])],
-                    "psi_e5": [float((1/5) * np.arctan2(float(trentoOutput[12]), float(trentoOutput[11])))],
-                    "seed": [randomSeed],
-                    "cmd": [trentoCmd],
-                }
-            )
-        except ValueError:
-            trentoDataFrame = pd.DataFrame({})
-
-        resultsDataFrame = trentoDataFrame
-
-    # Pass on result file name, trentoSubprocess data, and dataframe.
-    return resultsDataFrame.drop(labels='event', axis=1), filename, subprocess
+    if return_process:
+        return resultsDataFrame, output, subprocess
+    else:
+        return resultsDataFrame
 
 # Define function to generate an averaged initial condition at the impact parameter associated with the seed
 def runTrento_Avg(directory, randomSeed=None, quiet=False, bmin=None, bmax=None, num_events=1000):
+
+    # Run a single event to get an impact parameter using Trento's sampling
     logging.info('Finding impact parameter from sample event...')
-    event_dataframe, trento_output_file, trento_subprocess = runTrento(outputFile=False, randomSeed=randomSeed,
-                                                                       numEvents=1, quiet=quiet, bmin=bmin, bmax=bmax)
+    event_dataframe = runTrento(output=None, randomSeed=randomSeed,
+                                numEvents=1, quiet=quiet,
+                                bmin=bmin, bmax=bmax)
     chosen_b = float(event_dataframe['b'].iloc[0])
 
-    logging.info('Generating many Trento events...')
-    event_dataframe, trento_output_file, trento_subprocess = runTrento(outputFile=True, randomSeed=None,
-                                                                       numEvents=num_events,
-                                                                       quiet=quiet, output=directory,
-                                                                       bmin=chosen_b, bmax=chosen_b)
+    # Run many events at the chosen impact parameter
+    logging.info(f'Generating {num_events} Trento events for averaging...')
+    event_dataframe = runTrento(output=directory, randomSeed=None,
+                                numEvents=num_events, quiet=quiet,
+                                bmin=chosen_b, bmax=chosen_b)
 
+    # Get the mean values of number of participants and number of binary collisions
     npart = event_dataframe['npart'].mean()
     ncoll = event_dataframe["ncoll"].mean()
 
     logging.info('Aligning and averaging events...')
-    # Load the events and sum them
+    # Load the events from file and sum them -- shift to match centers of mass, rotate to match psi2
     gridstep = config.transport.GRID_STEP
     first = True
     for file in os.listdir(directory):
+        # Load file as ic object
         new = np.loadtxt(directory + '/' + file)
         ic = initial.IC(new, 0.1)
-        e2_more, e2_psi2 = utilities.ecc_more(ic, 2)
-        #print('{}, {}'.format(e2_more, e2_psi2))
+
+        # Find center of mass and shift to 0,0
         new_cm = ic.cm()
         new = shift(new, shift=(np.array([new_cm[1], -new_cm[0]]) / gridstep))
+
+        # Create a new ic object with the shifted data and rotate to match psi2
         ic = initial.IC(new, 0.1)
         e2_more, e2_psi2 = utilities.ecc_more(ic, 2)
         new = rotate(new, angle=-(e2_psi2 / np.pi) * 180, reshape=False)
+
+        # Add to the summing ic array
         if first:
             ic_array = new
             first = False
@@ -502,13 +419,13 @@ def generate_event(grid_max_target=config.transport.GRID_MAX_TARGET, grid_step=c
     logging.info('Random seed selected: {}'.format(seed))
 
     # Default to duke events
-    if IC_type == 'None':  # Case for if no command line arg passed to ebe_ape_21D.py
-        IC_type = 'Duke'
+    if IC_type == 'None':
+        IC_type = 'Duke_avg'
 
     if IC_type == 'Duke':
         # Decide where to locate the initial conditions file
         if working_dir is not None:
-            trento_ic_path = working_dir + '/initial.hdf'
+            trento_ic_path = os.path.join(working_dir, '/initial.hdf')
         else:
             trento_ic_path = 'initial.hdf'
 
@@ -517,9 +434,10 @@ def generate_event(grid_max_target=config.transport.GRID_MAX_TARGET, grid_step=c
         logging.info(os.getcwd())
 
         # Generate trento event
-        event_dataframe, trento_output_file, trento_subprocess = runTrento(outputFile=True, randomSeed=seed,
-                                                                           quiet=False,
-                                                                           output=trento_ic_path, bmin=bmin, bmax=bmax)
+        event_dataframe = runTrento(randomSeed=seed,
+                                    quiet=False,
+                                    output=trento_ic_path,
+                                    bmin=bmin, bmax=bmax)
 
         # Debug pwd
         logging.info('Running freestream in...')
@@ -531,7 +449,7 @@ def generate_event(grid_max_target=config.transport.GRID_MAX_TARGET, grid_step=c
     elif IC_type == 'Duke_avg':
         # Decide where to locate the initial conditions files
         if working_dir is not None:
-            trento_ic_path = working_dir + '/trento_output'
+            trento_ic_path = os.path.join(working_dir, 'trento_output')
         else:
             trento_ic_path = 'trento_output'
 
@@ -540,20 +458,6 @@ def generate_event(grid_max_target=config.transport.GRID_MAX_TARGET, grid_step=c
                                         quiet=False, bmin=bmin, bmax=bmax)
 
         ic = ic_array
-    elif IC_type == 'WS':
-        # Get an impact parameter straight from Trento
-        # Decide where to locate the initial conditions files
-        if working_dir is not None:
-            trento_ic_path = working_dir + '/trento_output'
-        else:
-            trento_ic_path = 'trento_output'
-
-        # Get an averaged initial condition from many trento runs -- pull some fancy stuff
-        ic_array, avg_dataframe = runTrento_Avg(directory=trento_ic_path, randomSeed=seed,
-                                                  quiet=False, bmin=bmin, bmax=bmax)
-        chosen_b = float(avg_dataframe['b'].iloc[0])
-        npart = avg_dataframe['npart']
-        ncoll = avg_dataframe['ncoll']
 
     # Form a flat dictionary of the event results
     results["b"] = float(event_dataframe['b'].iloc[0])
@@ -613,8 +517,11 @@ def generate_event(grid_max_target=config.transport.GRID_MAX_TARGET, grid_step=c
 
     # Determine maximum number of timesteps needed
     # This is the time it takes for a jet to travel across the plasma on its longest path at the speed of light
-    maxTime = 2*rmax  # in fm --- equal to length to traverse in fm for c = 1 - 2x largest width of plasma
-    logging.info('maxTime = %.3f fm', maxTime)
+    # Note that this isn't the longest pathlength in the grid, it's the longest pathlength in the fluid at final time
+    # Right now, we don't actually use this, but it's on the docket to consider whether the edge cases that see the
+    # end of event time data are a statistically significant fraction of events.
+    # maxTime = 2*rmax  # in fm --- equal to length to traverse in fm for c = 1 - 2x largest width of plasma
+    # logging.info('maxTime = %.3f fm', maxTime)
 
     # Dump the coarse run event data
     logging.info('Dumping coarse run hydro data')
