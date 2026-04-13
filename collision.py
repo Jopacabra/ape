@@ -674,7 +674,7 @@ def generate_event(grid_max_target=config.transport.GRID_MAX_TARGET, grid_step=c
 
     # Create event object
     # This asks the hydro file object to interpolate the relevant functions and pass them on to the plasma object.
-    event = plasma.plasma_event(hydro_file_path=plasmaFilePath, meta=dict(event_dataframe))
+    event = plasma.plasma_event(hydro_file_path=plasmaFilePath, meta=results)
 
     # Go home & announce
     os.chdir(og_dir)
