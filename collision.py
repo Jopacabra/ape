@@ -42,6 +42,7 @@ class StopEvent(Exception):
 # Function that generates a new Trento collision event with parameters from config file.
 # Returns the Trento output file name.
 def runTrento(randomSeed=None, numEvents=1, quiet=False, output=None,
+              proj1=config.transport.trento.PROJ1, proj2=config.transport.trento.PROJ2,
               bmin=config.transport.trento.BMIN, bmax=config.transport.trento.BMAX,
               grid_step=config.transport.GRID_STEP, grid_max=config.transport.GRID_MAX_TARGET,
               norm=config.transport.trento.NORM,
@@ -64,90 +65,89 @@ def runTrento(randomSeed=None, numEvents=1, quiet=False, output=None,
     except TypeError:
         pass
 
-    # Generate Trento command argument list
+    # Build Trento command with conditional parameters
     trentoCmd = ['trento']
-    if randomSeed is not None:
-        trentoCmd.append('--random-seed {}'.format(int(randomSeed)))  # Random seed for repeatability
-    trentoCmd.append(f'--number-events {numEvents}')  # Number of events to generate
-    trentoCmd.append('--projectile {}'.format(config.transport.trento.PROJ1))  # Collision projectile 1
-    trentoCmd.append('--projectile {}'.format(config.transport.trento.PROJ2))  # Collision projectile 2
 
-    # File output options
-    if output is not None:
-        trentoCmd.append('--output {}'.format(output))  # Output file name
+    # Define parameters: (flag, value) tuples
+    # Only include if value is not None
+    parameters = [
+        ('--random-seed', randomSeed),
+        ('--number-events', numEvents),
+        ('--projectile', proj1),
+        ('--projectile', proj2),
+        ('--output', output),
+        ('--grid-step', grid_step),
+        ('--grid-max', grid_max),
+        ('--b-min', bmin),
+        ('--b-max', bmax),
+        ('--normalization', norm),
+        ('--cross-section', cross_section),
+        ('--nucleon-width', nucleon_width),
+        ('--reduced-thickness', p),
+        ('--fluctuation', k),
+        ('--constit-width', v),
+        ('--constit-number', nc),
+        ('--nucleon-min-dist', dmin),
+    ]
 
-    # Numerical grid options
-    trentoCmd.append(f'--grid-step {grid_step}')  # Grid step size in fm
-    trentoCmd.append(f'--grid-max {grid_max}')  # Grid max size in fm
+    # Append parameters to command if they are not None
+    for flag, value in parameters:
+        if value is not None:
+            trentoCmd.append(f'{flag} {value}')
 
-    # Physical Options
-    if bmin is not None:
-        trentoCmd.append('--b-min {}'.format(bmin))  # Minimum impact parameter (in fm)
-    if bmax is not None:
-        trentoCmd.append('--b-max {}'.format(bmax))  # Maximum impact parameter (in fm)
-    trentoCmd.append('--normalization {}'.format(norm))
-    trentoCmd.append('--cross-section {}'.format(cross_section))
-    trentoCmd.append('--nucleon-width {}'.format(nucleon_width))
-    trentoCmd.append('--reduced-thickness {}'.format(p))
-    trentoCmd.append('--fluctuation {}'.format(k))
-    trentoCmd.append('--constit-width {}'.format(v))
-    trentoCmd.append('--constit-number {}'.format(nc))
-    trentoCmd.append('--nucleon-min-dist {}'.format(dmin))
+    # Add flag-only parameter
     trentoCmd.append('--ncoll')
 
-
     # Run Trento command
-    # Note star unpacks the list to pass the command list as arguments
     if not quiet:
-        logging.info('format: event_number impact_param npart ncoll mult e2_re e2_im e3_re e3_im e4_re e4_im e5_re e5_im')
+        logging.info(
+            'format: event_number impact_param npart ncoll mult e2_re e2_im e3_re e3_im e4_re e4_im e5_re e5_im')
     subprocess, output = utilities.run_cmd(*trentoCmd, quiet=quiet)
 
-    # Parse shell output and pass to dataframe.
-    first = True
+    # Parse shell output and build list of rows
+    rows = []
     for line in output:
         trentoOutput = line.split()
         try:
-            trentoDataFrame = pd.DataFrame(
-                {
-                    "event": [int(trentoOutput[0])],
-                    "b": [float(trentoOutput[1])],
-                    "npart": [int(trentoOutput[2])],
-                    "ncoll": [float(trentoOutput[3])],
-                    "mult": [float(trentoOutput[4])],
-                    "e2_re": [float(trentoOutput[5])],
-                    "e2_im": [float(trentoOutput[6])],
-                    "psi_e2": [float((1/2) * np.arctan2(float(trentoOutput[6]), float(trentoOutput[5])))],
-                    "e3_re": [float(trentoOutput[7])],
-                    "e3_im": [float(trentoOutput[8])],
-                    "psi_e3": [float((1/3) * np.arctan2(float(trentoOutput[8]), float(trentoOutput[7])))],
-                    "e4_re": [float(trentoOutput[9])],
-                    "e4_im": [float(trentoOutput[10])],
-                    "psi_e4": [float((1/4) * np.arctan2(float(trentoOutput[10]), float(trentoOutput[9])))],
-                    "e5_re": [float(trentoOutput[11])],
-                    "e5_im": [float(trentoOutput[12])],
-                    "psi_e5": [float((1/5) * np.arctan2(float(trentoOutput[12]), float(trentoOutput[11])))],
-                    "seed": [randomSeed]
-                }
-            )
+            row = {
+                "event": int(trentoOutput[0]),
+                "b": float(trentoOutput[1]),
+                "npart": int(trentoOutput[2]),
+                "ncoll": float(trentoOutput[3]),
+                "mult": float(trentoOutput[4]),
+                "e2_re": float(trentoOutput[5]),
+                "e2_im": float(trentoOutput[6]),
+                "psi_e2": float((1 / 2) * np.arctan2(float(trentoOutput[6]), float(trentoOutput[5]))),
+                "e3_re": float(trentoOutput[7]),
+                "e3_im": float(trentoOutput[8]),
+                "psi_e3": float((1 / 3) * np.arctan2(float(trentoOutput[8]), float(trentoOutput[7]))),
+                "e4_re": float(trentoOutput[9]),
+                "e4_im": float(trentoOutput[10]),
+                "psi_e4": float((1 / 4) * np.arctan2(float(trentoOutput[10]), float(trentoOutput[9]))),
+                "e5_re": float(trentoOutput[11]),
+                "e5_im": float(trentoOutput[12]),
+                "psi_e5": float((1 / 5) * np.arctan2(float(trentoOutput[12]), float(trentoOutput[11]))),
+                "seed": randomSeed
+            }
+            rows.append(row)
         except ValueError:
-            trentoDataFrame = pd.DataFrame({})
-        if first:
-            resultsDataFrame = trentoDataFrame
-            first = False
-        else:
-            resultsDataFrame = pd.concat([resultsDataFrame, trentoDataFrame])
+            pass
 
-        # Compute trento ic eccentricities
-        resultsDataFrame['e2'] = np.sqrt(resultsDataFrame['e2_re'] ** 2 + resultsDataFrame['e2_im'] ** 2)
-        resultsDataFrame['e3'] = np.sqrt(resultsDataFrame['e3_re'] ** 2 + resultsDataFrame['e3_im'] ** 2)
-        resultsDataFrame['e4'] = np.sqrt(resultsDataFrame['e4_re'] ** 2 + resultsDataFrame['e4_im'] ** 2)
-        resultsDataFrame['e5'] = np.sqrt(resultsDataFrame['e5_re'] ** 2 + resultsDataFrame['e5_im'] ** 2)
+    # Create dataframe from all rows at once
+    trento_df = pd.DataFrame(rows) if rows else pd.DataFrame()
+
+    # Compute trento ic eccentricities
+    if not trento_df.empty:
+        trento_df['e2'] = np.sqrt(trento_df['e2_re'] ** 2 + trento_df['e2_im'] ** 2)
+        trento_df['e3'] = np.sqrt(trento_df['e3_re'] ** 2 + trento_df['e3_im'] ** 2)
+        trento_df['e4'] = np.sqrt(trento_df['e4_re'] ** 2 + trento_df['e4_im'] ** 2)
+        trento_df['e5'] = np.sqrt(trento_df['e5_re'] ** 2 + trento_df['e5_im'] ** 2)
 
     # Pass on result file name, trentoSubprocess data, and dataframe.
     if return_process:
-        return resultsDataFrame, output, subprocess
+        return trento_df, output, subprocess
     else:
-        return resultsDataFrame
+        return trento_df
 
 # Define function to generate an averaged initial condition at the impact parameter associated with the seed
 def runTrento_Avg(directory, randomSeed=None, quiet=False, bmin=None, bmax=None, num_events=1000):
