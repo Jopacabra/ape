@@ -14,45 +14,54 @@ import utilities
 def run_cmd(*args, quiet=False):
     """
     Run and log a Subprocess.
+
+    Uses communicate() for safe, deadlock-free process handling.
+    All output is captured and available after process completion.
     """
     cmd = ' '.join(args)
     logging.info('running shell command:\n{}'.format(cmd))
     processName = str(args[0])
 
     try:
-        shell_process = subprocess.run(
+        proc = subprocess.Popen(
             cmd.split(),
-            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
             universal_newlines=True
         )
-
-        # Copy the output of the process
-        outputCopyStdout = shell_process.stdout  # Combined stdout and stderr
-
-        # Log at appropriate level
-        if not quiet:
-            logging.info('------------- {} Output ----------------'.format(processName))
-            logging.info('exit status:\n{}'.format(shell_process.returncode))
-            logging.info('stdout & stderr:\n')
-            logging.info(outputCopyStdout)
-            logging.info('------------- {} Output End ----------------'.format(processName))
-        else:
-            logging.debug('------------- {} Output ----------------'.format(processName))
-            logging.debug('exit status:\n{}'.format(shell_process.returncode))
-            logging.debug('stdout & stderr:\n')
-            logging.debug(outputCopyStdout)
-            logging.debug('------------- {} Output End ----------------'.format(processName))
-            pass
-
-        # Split output on linebreaks
-        outputArray = outputCopyStdout.splitlines()
-
-        return shell_process, outputArray
     except subprocess.CalledProcessError as e:
         logging.error(
             'command failed with status {}}:\n{}}'.format(e.returncode, e.output.strip('\n'))
         )
-        raise Exception
+        raise
+
+    # communicate() waits for process to complete and captures all output safely
+    # This avoids deadlocks that can occur with manual pipe reading
+    output_text, _ = proc.communicate()
+
+    # Parse output into lines as a numpy array
+    outputArray = np.array([line for line in output_text.split('\n') if line])
+
+    if not quiet:
+        logging.info('------------- {} Output Start ----------------'.format(processName))
+        logging.debug('exit status: {}'.format(proc.returncode))
+        logging.info('stdout:')
+        for line in outputArray:
+            logging.info(line)
+        logging.info('------------- {} Output End ----------------'.format(processName))
+    elif processName == 'afterburner':  # Special case to handle repeated output of urqmd
+        # Trim output and return only unique passages
+        pass
+    else:
+        logging.debug('------------- {} Output Start ----------------'.format(processName))
+        logging.debug('exit status: {}'.format(proc.returncode))
+        logging.debug('stdout:')
+        for line in outputArray:
+            logging.debug(line)
+        logging.debug('------------- {} Output End ----------------'.format(processName))
+
+
+    return proc, outputArray
 
 
 # Function to round up to specified number of decimals
