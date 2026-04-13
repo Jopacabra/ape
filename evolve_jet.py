@@ -34,7 +34,7 @@ import event_dataset
 visualize = False
 
 # Event options
-num_hard_events = config.EBE.NUM_SAMPLES
+num_hard_events = config.EBE.NUM_HARD
 event_type = config.mode.EVENT_TYPE
 seed = config.mode.SEED
 
