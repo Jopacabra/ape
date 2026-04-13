@@ -1,4 +1,5 @@
 mode:  # Operation mode flags
+    SEED: None  # Random seed for reproducibility. Set None for random seed. Max 900000000 for Pythia usage.
     VARY_POINT: True  # Determines if we vary the prod point or set it to (0,0)
     NUM_HARD: 100      # Number of hard jet production processes to run in each event
     KEEP_EVENT: False  # Keep plasma data for future analysis

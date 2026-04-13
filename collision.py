@@ -685,7 +685,7 @@ def generate_event(grid_max_target=config.transport.GRID_MAX_TARGET, grid_step=c
 
 # Function to rejection sample a given interpolated temperature function^6 for jet production.
 # Returns an accepted (x, y) sample point as a numpy array.
-def temp_6th_sample(event, maxAttempts=5, time='i', batch=1000):
+def temp_6th_sample(event, maxAttempts=5, time='i', batch=1000, seed=None):
     # Get temperature function
     temp_func = event.temp
 
@@ -710,7 +710,7 @@ def temp_6th_sample(event, maxAttempts=5, time='i', batch=1000):
     while attempt < maxAttempts:
         # Generate random point in 3D box of l = w = gridWidth and height maximum temp.^6
         # Origin at center of bottom of box
-        pointArray = utilities.cube_random(num = batch, boxSize=gridWidth, maxProb=maxTemp ** 6)
+        pointArray = utilities.cube_random(num = batch, boxSize=gridWidth, maxProb=maxTemp ** 6, seed=seed)
 
         for point in pointArray:
             targetTemp = temp_func(np.array([time, point[0], point[1]]))**6
@@ -731,10 +731,10 @@ def temp_6th_sample(event, maxAttempts=5, time='i', batch=1000):
 
 # Function to generate a given number of jet production points
 # sampled from the temperature^6 profile.
-def generate_jet_seed_point(event, num=1):
+def generate_jet_seed_point(event, num=1, seed=None):
     pointArray = np.array([])
     for i in np.arange(0, num):
-        newPoint = temp_6th_sample(event)
+        newPoint = temp_6th_sample(event, seed=seed)
         if i == 0:
             pointArray = newPoint
         else:

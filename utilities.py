@@ -121,8 +121,8 @@ def tempDir(location=None):
 
 # Generate a random (x, y, z) coordinate in a 3D box of l = w = boxSize and h = maxProb
 # Origin at cent of bottom of box.
-def cube_random(num=1, boxSize=1, maxProb=1):
-    rng = np.random.default_rng()
+def cube_random(num=1, boxSize=1, maxProb=1, seed=None):
+    rng = np.random.default_rng(seed=seed)
     pointArray = np.array([])
     for i in np.arange(0, num):
         x = (boxSize * rng.random()) - (boxSize / 2)

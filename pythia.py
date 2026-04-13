@@ -12,7 +12,8 @@ import hard_particles
 def scattering(pThatmin=config.jet.PTHATMIN, pThatmax=config.jet.PTHATMAX, do_shower=config.jet.SHOWER,
                type=config.jet.TYPE, min_pt=1, get_all=True, tau=config.transport.hydro.TAU_FS, x=0, y=0, etas=0,
                selection_power=config.jet.BIAS_POWER,
-               y_max=config.jet.RAP_MAX, y_min=config.jet.RAP_MIN, pythia_event=False, quiet=True):
+               y_max=config.jet.RAP_MAX, y_min=config.jet.RAP_MIN, pythia_event=False, quiet=True,
+               seed=0):
     ############
     # Settings #
     ############
@@ -74,9 +75,9 @@ def scattering(pThatmin=config.jet.PTHATMIN, pThatmax=config.jet.PTHATMAX, do_sh
     else:
         pass
 
-    # Use seed based on time
+    # Use seed based on time by default (0), or a specific seed as passed in the parameter
     pythia_process.readString("Random:setSeed = on")
-    pythia_process.readString("Random:seed = 0")
+    pythia_process.readString(f"Random:seed = {seed}")
 
     # # Set beam energy - in GeV
     pythia_process.readString("Beams:eCM = {}".format(config.constants.ROOT_S))

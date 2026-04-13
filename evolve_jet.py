@@ -36,6 +36,7 @@ visualize = False
 # Event options
 num_hard_events = config.EBE.NUM_SAMPLES
 event_type = config.mode.EVENT_TYPE
+seed = config.mode.SEED
 
 #############################
 # Logging and File Handling #
@@ -47,6 +48,10 @@ home_path = os.getcwd()  # Gets working directory when script was run - results 
 results_path = os.path.join(home_path, "results")  # Absolute path of dir where results files will live
 os.makedirs(results_path, exist_ok=True)  # Make results directory
 
+# Create result folders, if necessary
+Path(os.path.join(project_path, "results/hepmc/m")).mkdir(parents=True, exist_ok=True)
+Path(os.path.join(project_path, "results/hepmc/v")).mkdir(parents=True, exist_ok=True)
+
 # Clear any existing logging handlers
 for handler in logging.root.handlers[:]:
     logging.root.removeHandler(handler)
@@ -56,7 +61,7 @@ logging.basicConfig(
     level=logging.DEBUG,
     handlers=[
         logging.StreamHandler(sys.stderr),
-        logging.FileHandler('log.log')
+        logging.FileHandler(os.path.join(project_path, "results/log.log"))
     ],
     force=True
 )
@@ -64,10 +69,6 @@ logging.basicConfig(
 # Ignore obnoxious font-search problems
 logging.getLogger('matplotlib.font_manager').disabled = True
 logging.getLogger('matplotlib.ticker').disabled = True
-
-# Create result folders, if necessary
-Path("results/hepmc/m").mkdir(parents=True, exist_ok=True)
-Path("results/hepmc/v").mkdir(parents=True, exist_ok=True)
 
 # Copy config file to the results directory
 config_file_path = os.path.join(project_path, 'user_config.yml')
@@ -143,7 +144,7 @@ elif event_type == "Duke":
 
     # Run event generation using config setttings
     # Note that we need write permissions in the working directory
-    plasma_object = collision.generate_event(working_dir=event_dir, IC_type="Duke")
+    plasma_object = collision.generate_event(working_dir=event_dir, IC_type="Duke", seed=seed)
 
 # Create a sampled realistic DukeQCD generator event with averaged initial conditions
 elif event_type == "Duke_avg":
@@ -151,7 +152,7 @@ elif event_type == "Duke_avg":
 
     # Run event generation using config setttings
     # Note that we need write permissions in the working directory
-    plasma_object = collision.generate_event(working_dir=event_dir, IC_type="Duke_avg")
+    plasma_object = collision.generate_event(working_dir=event_dir, IC_type="Duke_avg", seed=seed)
 
 # Load a saved Duke event
 else:
@@ -180,11 +181,11 @@ logging.info('Soft event complete created.')
 # Hard Event Evolution #
 ########################
 num_jets = 0  # Counter for total jets analyzed
+rng = np.random.default_rng(seed=seed)
 try:
 
     hard_event_records = np.array([])
     for i in range(num_hard_events):
-        rng = np.random.default_rng()
         random_label = int(rng.uniform(1000000000, 9999999999, 1)[0])
         logging.info(
             f"Starting new hard scattering event {i + 1} of {num_hard_events} with label {random_label}."
@@ -199,7 +200,7 @@ try:
         # Production point
         if config.mode.VARY_POINT:
             logging.debug('Sampling hard scattering point...')
-            point = collision.generate_jet_seed_point(plasma_object)
+            point = collision.generate_jet_seed_point(plasma_object, seed=seed+i)
             tau_0 = config.jet.TAU_PROD
             x_0 = point[0]
             y_0 = point[1]
@@ -213,7 +214,7 @@ try:
             etas_0 = 0.0
 
         logging.info(f"Embedding hard scattering at ({tau_0}, {x_0}, {y_0}, {etas_0})")
-        hard_event, event_weight, pythia_record = pythia.scattering(tau=tau_0, x=x_0, y=y_0, etas=etas_0, pythia_event=True)
+        hard_event, event_weight, pythia_record = pythia.scattering(tau=tau_0, x=x_0, y=y_0, etas=etas_0, pythia_event=True, seed=seed+i)
         num_hard_particles = len(hard_event.particles)
         logging.info('Hard scattering done.')
 
@@ -305,7 +306,7 @@ try:
             # Save particles to hierarchical dataset
             dataset_manager.save_job_output(
                 job_id=job_id,
-                soft_event_seed=next_event_ii,
+                soft_event_seed=seed,
                 event_record=hard_event,
                 soft_event_props= soft_dict,
                 config_dict={

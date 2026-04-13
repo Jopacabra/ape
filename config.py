@@ -39,6 +39,13 @@ class EBE:
 
 # Mode configuration
 class mode:
+    try:
+        SEED = int(cfg['mode']['SEED'])
+    except:
+        logging.info("No seed provided. Using random seed.")
+        import random
+        SEED = random.randint(0, 900000000)  # 900 million seeds -- pythia limitation
+
     VARY_POINT = bool(cfg['mode']['VARY_POINT'])
     KEEP_EVENT = bool(cfg['mode']['KEEP_EVENT'])
     WRITE_DATAFRAME = bool(cfg['mode']['WRITE_DATAFRAME'])
