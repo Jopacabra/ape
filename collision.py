@@ -42,17 +42,17 @@ class StopEvent(Exception):
 # Function that generates a new Trento collision event with parameters from config file.
 # Returns the Trento output file name.
 def runTrento(randomSeed=None, numEvents=1, quiet=False, output=None,
-              proj1=config.transport.trento.PROJ1, proj2=config.transport.trento.PROJ2,
-              bmin=config.transport.trento.BMIN, bmax=config.transport.trento.BMAX,
-              grid_step=config.transport.GRID_STEP, grid_max=config.transport.GRID_MAX_TARGET,
-              norm=config.transport.trento.NORM,
-              cross_section=config.transport.trento.CROSS_SECTION,
-              nucleon_width=config.transport.trento.NUCLEON_WIDTH,
-              p=config.transport.trento.P,
-              k=config.transport.trento.K,
-              v=config.transport.trento.V,
-              nc=config.transport.trento.NC,
-              dmin=config.transport.trento.DMIN,
+              proj1=config.soft_transport.trento.PROJ1, proj2=config.soft_transport.trento.PROJ2,
+              bmin=config.soft_transport.trento.BMIN, bmax=config.soft_transport.trento.BMAX,
+              grid_step=config.soft_transport.all.GRID_STEP, grid_max=config.soft_transport.all.GRID_MAX,
+              norm=config.soft_transport.trento.NORM,
+              cross_section=config.soft_transport.trento.CROSS_SECTION,
+              nucleon_width=config.soft_transport.trento.NUCLEON_WIDTH,
+              p=config.soft_transport.trento.P,
+              k=config.soft_transport.trento.K,
+              v=config.soft_transport.trento.V,
+              nc=config.soft_transport.trento.NC,
+              dmin=config.soft_transport.trento.DMIN,
               return_process=False):
 
     # Make sure there's no file where we want to stick it.
@@ -171,7 +171,7 @@ def runTrento_Avg(directory, randomSeed=None, quiet=False, bmin=None, bmax=None,
 
     logging.info('Aligning and averaging events...')
     # Load the events from file and sum them -- shift to match centers of mass, rotate to match psi2
-    gridstep = config.transport.GRID_STEP
+    gridstep = config.soft_transport.all.GRID_STEP
     first = True
     for file in os.listdir(directory):
         # Load file as ic object
@@ -198,7 +198,7 @@ def runTrento_Avg(directory, randomSeed=None, quiet=False, bmin=None, bmax=None,
     ic_array = ic_array / num_events
 
     logging.info('Computing event info and packaging...')
-    ic_object = initial.IC(ic_array, config.transport.GRID_STEP)
+    ic_object = initial.IC(ic_array, config.soft_transport.all.GRID_STEP)
 
     ic_mult = ic_object.sum()
     e2, psi_e2 = utilities.ecc_more(ic_object, 2)
@@ -306,22 +306,22 @@ def run_hydro(fs, event_size, grid_step=0.1, tau_fs=0.5, eswitch=0.110, coarse: 
             logging.info('Limiting time...')
             hydroCmd = ['osu-hydro', 't0={} dt={} dxy={} nls={} vismin={} visslope={} viscrv={} visbulkmax={} '.format(
                                                                                 tau_fs, dt, dxy, ls,
-                                                                                config.transport.hydro.ETAS_MIN,
-                                                                                config.transport.hydro.ETAS_SLOPE,
-                                                                                config.transport.hydro.ETAS_CURV,
-                                                                                config.transport.hydro.ZETAS_MAX)
-                        + 'visbulkwidth={} visbulkt0={} time_stepmaxt={} edec={}'.format(config.transport.hydro.ZETAS_WIDTH,
-                                                                                 config.transport.hydro.ZETAS_T0,
-                                                                                 maxTime, eswitch)]
+                                                                                config.soft_transport.hydro.ETAS_MIN,
+                                                                                config.soft_transport.hydro.ETAS_SLOPE,
+                                                                                config.soft_transport.hydro.ETAS_CURV,
+                                                                                config.soft_transport.hydro.ZETAS_MAX)
+                        + 'visbulkwidth={} visbulkt0={} time_stepmaxt={} edec={}'.format(config.soft_transport.hydro.ZETAS_WIDTH,
+                                                                                         config.soft_transport.hydro.ZETAS_T0,
+                                                                                         maxTime, eswitch)]
         else:
             hydroCmd = ['osu-hydro', 't0={} dt={} dxy={} nls={} vismin={} visslope={} viscrv={} visbulkmax={} '.format(
                                                                                 tau_fs, dt, dxy, ls,
-                                                                                config.transport.hydro.ETAS_MIN,
-                                                                                config.transport.hydro.ETAS_SLOPE,
-                                                                                config.transport.hydro.ETAS_CURV,
-                                                                                config.transport.hydro.ZETAS_MAX)
-                        + 'visbulkwidth={} visbulkt0={} edec={}'.format(config.transport.hydro.ZETAS_WIDTH,
-                                                                config.transport.hydro.ZETAS_T0, eswitch)]
+                                                                                config.soft_transport.hydro.ETAS_MIN,
+                                                                                config.soft_transport.hydro.ETAS_SLOPE,
+                                                                                config.soft_transport.hydro.ETAS_CURV,
+                                                                                config.soft_transport.hydro.ZETAS_MAX)
+                        + 'visbulkwidth={} visbulkt0={} edec={}'.format(config.soft_transport.hydro.ZETAS_WIDTH,
+                                                                        config.soft_transport.hydro.ZETAS_T0, eswitch)]
 
         if hydro_args != None:
             hydroCmd = hydroCmd + hydro_args
@@ -353,9 +353,9 @@ def run_hydro(fs, event_size, grid_step=0.1, tau_fs=0.5, eswitch=0.110, coarse: 
 
 
 # Function to generate a new HIC event and dump the files in the current working directory.
-def generate_event(grid_max_target=config.transport.GRID_MAX_TARGET, grid_step=config.transport.GRID_STEP,
-                   time_step=config.transport.TIME_STEP, tau_fs=config.transport.hydro.TAU_FS,
-                   t_end=config.transport.hydro.T_SWITCH, seed=None, working_dir=None,
+def generate_event(grid_max_target=config.soft_transport.all.GRID_MAX, grid_step=config.soft_transport.all.GRID_STEP,
+                   time_step=config.soft_transport.all.TIME_STEP, tau_fs=config.soft_transport.all.TAU_FS,
+                   t_end=config.soft_transport.hydro.T_SWITCH, seed=None, working_dir=None,
                    IC_type='Duke', bmin=None, bmax=None):
 
     if working_dir is not None:
@@ -363,7 +363,7 @@ def generate_event(grid_max_target=config.transport.GRID_MAX_TARGET, grid_step=c
         os.chdir(working_dir)
 
     # the "target" grid max: the grid shall be at least as large as the target
-    # By defualt grid_max_target = config.transport.GRID_MAX_TARGET
+    # By defualt grid_max_target = config.transport.all.GRID_MAX
     # next two lines set the number of grid cells and actual grid max,
     # which will be >= the target (same algorithm as trento)
     grid_n = math.ceil(2 * grid_max_target / grid_step)
@@ -543,11 +543,12 @@ def generate_event(grid_max_target=config.transport.GRID_MAX_TARGET, grid_step=c
     event_surface = frzout.Surface(**hydro_dict, ymax=2)
     logging.info('%d freeze-out cells', len(event_surface))
 
-    minsamples, maxsamples = 10, 1000  # reasonable range for nsamples
-    minparts = 10 ** 5  # min number of particles to sample
+    # Frzout sampling loop settings
+    minsamples, maxsamples = config.soft_transport.frzout.MIN_SAMPLES, config.soft_transport.frzout.MAX_SAMPLES
+    minparts = config.soft_transport.frzout.MIN_PARTICLES  # min number of particles to sample
     nparts = 0  # for tracking total number of sampled particles
 
-    logging.info('sampling surface with frzout')
+    logging.info(f'sampling surface with frzout for target of {minparts} particles')
 
     # sample particles and write to file
     with open(os.path.join(working_dir, 'particles_in.dat'), 'w') as f:
@@ -744,7 +745,7 @@ def generate_jet_seed_point(event, num=1, seed=None):
 
 # Function to create Woods-Saxon distribution initial conditions
 def woods_saxon_ic(b, A=208, R=6.62, a=0.546, p=-1, norm=1,
-                   grid_step=config.transport.GRID_STEP, rmax=config.transport.GRID_MAX_TARGET):
+                   grid_step=config.soft_transport.all.GRID_STEP, rmax=config.soft_transport.all.GRID_MAX):
     # Defaults are Trento PbPb parameters
 
     # Determine radius

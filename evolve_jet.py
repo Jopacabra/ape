@@ -34,7 +34,7 @@ import event_dataset
 visualize = False
 
 # Event options
-num_hard_events = config.EBE.NUM_HARD
+num_hard_events = config.mode.NUM_HARD
 event_type = config.mode.EVENT_TYPE
 seed = config.mode.SEED
 
@@ -311,7 +311,7 @@ try:
                 soft_event_props= soft_dict,
                 config_dict={
                     'mode': {k: getattr(config.mode, k) for k in dir(config.mode) if not k.startswith('_')},
-                    'transport': {k: getattr(config.transport, k) for k in dir(config.transport) if
+                    'transport': {k: getattr(config.soft_transport, k) for k in dir(config.soft_transport) if
                                   not k.startswith('_')},
                     'jet': {k: getattr(config.jet, k) for k in dir(config.jet) if not k.startswith('_')},
                     'constants': {k: getattr(config.constants, k) for k in dir(config.constants) if

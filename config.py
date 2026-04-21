@@ -32,11 +32,6 @@ except:
         raise StopConfiguring("No config file. Please provide user_config.yml. Ending run...")
 
 
-# Event by event sampling configuration
-class EBE:
-    NUM_HARD = int(cfg['mode']['NUM_HARD'])
-
-
 # Mode configuration
 class mode:
     try:
@@ -50,59 +45,68 @@ class mode:
     KEEP_EVENT = bool(cfg['mode']['KEEP_EVENT'])
     WRITE_DATAFRAME = bool(cfg['mode']['WRITE_DATAFRAME'])
     EVENT_TYPE = str(cfg['mode']['EVENT_TYPE'])
+    NUM_HARD = int(cfg['mode']['NUM_HARD'])
 
 
-class transport:
-    GRID_STEP = float(cfg['transport']['GRID_STEP'])
-    TIME_STEP = float(cfg['transport']['TIME_STEP'])
-    GRID_MAX_TARGET = float(cfg['transport']['GRID_MAX_TARGET'])
+# Soft sector transport model configuration
+class soft_transport:
+    class all:
+        GRID_STEP = float(cfg['soft_transport']['all']['GRID_STEP'])
+        GRID_MAX = float(cfg['soft_transport']['all']['GRID_MAX'])
+        TIME_STEP = float(cfg['soft_transport']['all']['TIME_STEP'])
+        TAU_FS = float(cfg['soft_transport']['all']['TAU_FS'])
 
     class trento:
-        NORM = float(cfg['trento']['NORM'])
-        PROJ1 = str(cfg['trento']['PROJ1'])
-        PROJ2 = str(cfg['trento']['PROJ2'])
-        NUCLEON_WIDTH = float(cfg['trento']['NUCLEON_WIDTH'])
-        CROSS_SECTION = float(cfg['trento']['CROSS_SECTION'])
-        P = float(cfg['trento']['P'])
-        K = float(cfg['trento']['K'])
-        V = float(cfg['trento']['V'])
-        NC = int(cfg['trento']['NC'])
-        DMIN = float(cfg['trento']['DMIN'])
+        NORM = float(cfg['soft_transport']['trento']['NORM'])
+        PROJ1 = str(cfg['soft_transport']['trento']['PROJ1'])
+        PROJ2 = str(cfg['soft_transport']['trento']['PROJ2'])
+        NUCLEON_WIDTH = float(cfg['soft_transport']['trento']['NUCLEON_WIDTH'])
+        CROSS_SECTION = float(cfg['soft_transport']['trento']['CROSS_SECTION'])
+        P = float(cfg['soft_transport']['trento']['P'])
+        K = float(cfg['soft_transport']['trento']['K'])
+        V = float(cfg['soft_transport']['trento']['V'])
+        NC = int(cfg['soft_transport']['trento']['NC'])
+        DMIN = float(cfg['soft_transport']['trento']['DMIN'])
 
         try:
-            BMIN = float(cfg['trento']['BMIN'])
+            BMIN = float(cfg['soft_transport']['trento']['BMIN'])
         except ValueError:
             BMIN = None
         try:
-            BMAX = float(cfg['trento']['BMAX'])
+            BMAX = float(cfg['soft_transport']['trento']['BMAX'])
         except ValueError:
             BMAX = None
 
     class hydro:
-        TAU_FS = float(cfg['transport']['TAU_FS'])
-        T_SWITCH = float(cfg['transport']['T_SWITCH'])
-        ETAS_MIN = float(cfg['transport']['ETAS_MIN'])
-        ETAS_SLOPE = float(cfg['transport']['ETAS_SLOPE'])
-        ETAS_CURV = float(cfg['transport']['ETAS_CURV'])
-        ZETAS_MAX = float(cfg['transport']['ZETAS_MAX'])
-        ZETAS_WIDTH = float(cfg['transport']['ZETAS_WIDTH'])
-        ZETAS_T0 = float(cfg['transport']['ZETAS_T0'])
+        T_SWITCH = float(cfg['soft_transport']['hydro']['T_SWITCH'])
+        ETAS_MIN = float(cfg['soft_transport']['hydro']['ETAS_MIN'])
+        ETAS_SLOPE = float(cfg['soft_transport']['hydro']['ETAS_SLOPE'])
+        ETAS_CURV = float(cfg['soft_transport']['hydro']['ETAS_CURV'])
+        ZETAS_MAX = float(cfg['soft_transport']['hydro']['ZETAS_MAX'])
+        ZETAS_WIDTH = float(cfg['soft_transport']['hydro']['ZETAS_WIDTH'])
+        ZETAS_T0 = float(cfg['soft_transport']['hydro']['ZETAS_T0'])
+
+    class frzout:
+        MIN_SAMPLES = int(cfg['soft_transport']['frzout']['MIN_SAMPLES'])
+        MAX_SAMPLES = int(cfg['soft_transport']['frzout']['MAX_SAMPLES'])
+        MIN_PARTICLES = int(cfg['soft_transport']['frzout']['MIN_PARTICLES'])
 
 
 # Jet configuration
 class jet:
     TAU_PROD = float(cfg['jet']['TAU_PROD'])
-    PTHATMIN = float(cfg['jet']['PTHATMIN'])
-    PTHATMAX = float(cfg['jet']['PTHATMAX'])
-    BIAS_POWER = int(cfg['jet']['BIAS_POWER'])
-    SHOWER = bool(cfg['jet']['SHOWER'])
+    class pythia:
+        TYPE = str(cfg['jet']['pythia']['TYPE'])
+        PTHATMIN = float(cfg['jet']['pythia']['PTHATMIN'])
+        PTHATMAX = float(cfg['jet']['pythia']['PTHATMAX'])
+        BIAS_POWER = int(cfg['jet']['pythia']['BIAS_POWER'])
+        SHOWER = bool(cfg['jet']['pythia']['SHOWER'])
+        RAP_MIN = float(cfg['jet']['pythia']['RAP_MIN'])
+        RAP_MAX = float(cfg['jet']['pythia']['RAP_MAX'])
     DTAU = float(cfg['jet']['DTAU'])
     T_HRG = float(cfg['jet']['T_HRG'])
     K_F_DRIFT = float(cfg['jet']['K_F_DRIFT'])
     K_BBMG = 1  #float(cfg['jet']['K_BBMG'])
-    TYPE = str(cfg['jet']['TYPE'])
-    RAP_MIN = float(cfg['jet']['RAP_MIN'])
-    RAP_MAX = float(cfg['jet']['RAP_MAX'])
     RAP_MAX_EVOLVE = float(cfg['jet']['RAP_MAX_EVOLVE'])
     EMIN = float(cfg['jet']['EMIN'])
 

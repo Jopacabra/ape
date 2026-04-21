@@ -149,7 +149,7 @@ class Particle:
         
         # set default tau to tau_fs, if none provided
         if self.tau is None:
-            self.tau = config.transport.hydro.TAU_FS
+            self.tau = config.soft_transport.hydro.TAU_FS
 
         # set initial snapshot
         self.tau_0 = float(self.tau)
@@ -450,9 +450,9 @@ class Particle:
 
             # Compute distribution values for energy values
             if self.isq:  # Use fermion dist. -- Fermi-Dirac distribution
-                dist = (1 / (np.exp(E_samps / config.transport.hydro.T_SWITCH) + 1))
+                dist = (1 / (np.exp(E_samps / config.soft_transport.hydro.T_SWITCH) + 1))
             elif self.isg or self.isEWB:  # Use boson dist. -- Bose-Einstein distribution
-                dist = (1 / (np.exp(E_samps / config.transport.hydro.T_SWITCH) - 1))
+                dist = (1 / (np.exp(E_samps / config.soft_transport.hydro.T_SWITCH) - 1))
             else:
                 raise ValueError(f"Unknown parton statistics {self.id}")
             dist = dist / np.amax(dist)  # Normalize largest value to 1.

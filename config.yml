@@ -1,49 +1,56 @@
 mode:  # Operation mode flags
-    SEED: None  # Random seed for reproducibility. Set None for random seed. Max 900000000 for Pythia usage.
-    VARY_POINT: True  # Determines if we vary the prod point or set it to (0,0)
-    NUM_HARD: 100      # Number of hard jet production processes to run in each event
-    KEEP_EVENT: False  # Keep plasma data for future analysis
-    WRITE_DATAFRAME: True  # Whether to write a dataframe with initial and final parton properties
-    EVENT_TYPE:  stored_events/Duke_avg/event_01/viscous_14_moments_evo.dat  # Event type string or path to hydro file
-trento:  # Parameters used if Trento is run for initial conditions
-    NORM: 20  # Overall normalization factor for reduced thickness function (and thereby multiplicity)
-    PROJ1: 'Pb'  # Collisions species 1
-    PROJ2: 'Pb'  # Collisions species 2
-    NUCLEON_WIDTH: 0.92  # [fm] Gaussian nucleon width in fm. Default 0.92 fm from DukeQCD BA
-    CROSS_SECTION: 7.0  # [fm^2] Inelastic nucleon-nucleon cross section sigma_{NN} in fm^2 - Changes w/ beam energy
-    BMIN: None  # [fm] Minimum impact parameter. For no limits, set None.
-    BMAX: None  # [fm] Maximum impact parameter. For no limits, set None.
-    P: 0  # Nuclear overlap power parameter (default 0) -- Defines reduced thickness func.
-    K: 0.19  # Gamma distribution shape parameter k for nucleon fluctuations
-    V: 0.43  # [fm] Gaussian constituent width
-    NC: 6  # Number of nucleon constituents
-    DMIN: 0.81  # [fm] Minimum nucleon distance
-transport:  # Parameters for the hybrid transport medium model - freestreaming, hydro, frzout, & UrQMD
-    TAU_FS: 0.37  # [fm] freestreaming time, also thermalization time. Default 0.37 fm.
-    GRID_STEP: 0.1  # [fm] Hydro / Trento grid step in fm. Default 0.15*NUCLEON_WIDTH from DukeQCD BA
-    TIME_STEP: 0.05  # [fm] Hydro / Trento time step in fm. Default 0.25*GRID_STEP fm from DukeQCD BA
-    GRID_MAX_TARGET: 10  # [fm] Maximum hydro grid width.
-    T_SWITCH: 0.151  # [GeV] Minimum temperature in GeV of all cells at which to cut off hydro evolution.
-    ETAS_MIN: 0.11  # eta/s at T0
-    ETAS_SLOPE: 1.6  # [GeV^-1] slope of (eta/s)(T) above T0
-    ETAS_CURV: -0.29  # curvature of (eta/s)(T) above T0 (see osu-hydro readme)
-    ZETAS_MAX: 0.032  # maximum value of zeta/s (at T0)
-    ZETAS_WIDTH: 0.024  # [GeV] width of (zeta/s)(T)
-    ZETAS_T0: 0.175  # [GeV] peak location of Cauchy (zeta/s)(T)
+      SEED: None  # Random seed for reproducibility. Set None for random seed. Max 900000000 for Pythia usage.
+      VARY_POINT: True  # Determines if we vary the prod point or set it to (0,0)
+      NUM_HARD: 100      # Number of hard jet production processes to run in each event
+      KEEP_EVENT: False  # Keep plasma data for future analysis
+      WRITE_DATAFRAME: True  # Whether to write a dataframe with initial and final parton properties
+      EVENT_TYPE:  stored_events/Duke_avg/event_01/viscous_14_moments_evo.dat  # Event type string or path to hydro file
+soft_transport:  # Parameters for the hybrid transport medium model - freestreaming, hydro, frzout, & UrQMD
+    all:  # Global settings that control all or multiple transport models and / or their interfaces
+        GRID_MAX: 10  # [fm] Maximum hydro / Trento grid size -- width & height of grid is 2*GRID_MAX
+        GRID_STEP: 0.1  # [fm] Hydro / Trento grid step in fm. Default 0.15*NUCLEON_WIDTH from DukeQCD BA
+        TIME_STEP: 0.05  # [fm] Hydro / Trento time step in fm. Default 0.25*GRID_STEP fm from DukeQCD BA
+        TAU_FS: 0.37  # [fm] freestreaming time, also thermalization time. Default 0.37 fm.
+    trento: # Parameters used if Trento is run for initial conditions
+        NORM: 20  # Overall normalization factor for reduced thickness function (and thereby multiplicity)
+        PROJ1: 'Pb'  # Collisions species 1
+        PROJ2: 'Pb'  # Collisions species 2
+        NUCLEON_WIDTH: 0.92  # [fm] Gaussian nucleon width in fm. Default 0.92 fm from DukeQCD BA
+        CROSS_SECTION: 7.0  # [fm^2] Inelastic nucleon-nucleon cross section sigma_{NN} in fm^2 - Changes w/ beam energy
+        BMIN: None  # [fm] Minimum impact parameter. For no limits, set None.
+        BMAX: None  # [fm] Maximum impact parameter. For no limits, set None.
+        P: 0  # Nuclear overlap power parameter (default 0) -- Defines reduced thickness func.
+        K: 0.19  # Gamma distribution shape parameter k for nucleon fluctuations
+        V: 0.43  # [fm] Gaussian constituent width
+        NC: 6  # Number of nucleon constituents
+        DMIN: 0.81  # [fm] Minimum nucleon distance
+    hydro:  # Settings for hydrodynamic evolution
+        T_SWITCH: 0.151  # [GeV] Minimum temperature in GeV of all cells at which to cut off hydro evolution.
+        ETAS_MIN: 0.11  # eta/s at T0
+        ETAS_SLOPE: 1.6  # [GeV^-1] slope of (eta/s)(T) above T0
+        ETAS_CURV: -0.29  # curvature of (eta/s)(T) above T0 (see osu-hydro readme)
+        ZETAS_MAX: 0.032  # maximum value of zeta/s (at T0)
+        ZETAS_WIDTH: 0.024  # [GeV] width of (zeta/s)(T)
+        ZETAS_T0: 0.175  # [GeV] peak location of Cauchy (zeta/s)(T)
+    frzout:  # Settings for the frzout sampling -- controls multiplicity fed to UrQMD
+        MIN_SAMPLES: 10  # Minimum number of frzout samples to perform
+        MAX_SAMPLES: 10000  # Maximum number of frzout samples to perform
+        MIN_PARTICLES: 1000  # Minimum number of particles obtained to terminate frzout sampling loop before MAX_SAMPLES
 jet:  # Parameters for the jet production processes to be run
-    TAU_PROD: 0.01  # Choose when the hard process occurs -- hard partons freestream until "TAU_FS" -- Must be > 0
-    PTHATMIN: 1  # [GeV] Minimum pTHat for jet production hard scatterings ~ min initial pT of jets
-    PTHATMAX: 100  # [GeV] Maximum pTHat for jet production hard scatterings ~ max initial pT of jets
-    BIAS_POWER:  4  # Power of the bias function for hard scattering pThat
-    SHOWER: True  # If True, take Pythia vacuum jets. If False, take only hard scattering process particles.
+    pythia:
+        TYPE: "dijet"  # Type of hard processes to run -- "dijet" or "gamma-jet"
+        PTHATMIN: 1  # [GeV] Minimum pTHat for jet production hard scatterings ~ min initial pT of jets
+        PTHATMAX: 100  # [GeV] Maximum pTHat for jet production hard scatterings ~ max initial pT of jets
+        RAP_MIN: 0.0  # Minimum absolute value of rapidity for hard scattering plane.
+        RAP_MAX: 0.5  # Maximum absolute value of rapidity for hard scattering plane.
+        BIAS_POWER:  4  # Power of the bias function for hard scattering pThat
+        SHOWER: True  # If True, take Pythia vacuum jets. If False, take only hard scattering process particles.
+    TAU_PROD: 0.01  # [fm] > 0, Choose when hard process occurs -- hard partons freestream until hydro initialization
     DTAU: 0.1  # [fm] Timestep used for parton propagation -- plasma properties assumed constant over dtau
-    T_HRG: 0.155  # [GeV] Temperature in GeV at which to consider the medium hadronized - cuts off el & drift
-    K_F_DRIFT: 1  # Scale factor for flow drift effect - default realistic estimate is 1
-    TYPE: "dijet"  # Type of hard processes to run -- "dijet" or "gamma-jet"
-    RAP_MIN: 0.0  # Minimum absolute value of rapidity for hard scattering plane.
-    RAP_MAX: 0.5  # Maximum absolute value of rapidity for hard scattering plane.
+    T_HRG: 0.155  # [GeV] Temperature in GeV at which to consider the medium hadronized - cuts off medium interactions
+    K_F_DRIFT: 1.0  # Scale factor for flow drift effect - 1 is perturbative prediction in GW
     RAP_MAX_EVOLVE: 2.5  # Maximum absolute value of initial rapidity for which particles are evolved in the medium.
-    EMIN: 3.0  # Minimum energy for the particle to be evolved in the medium. Particle gets a random thermal final momentum.
+    EMIN: 3.0  # Minimum energy for particle to be evolved in the medium. Particle gets random thermal final momentum.
 global_constants:  # Physical constants to be set by the user.
     # Coupling is set by case selection in ebe scripts. Uses G_RAD by default.
     G: 2.1  # Coupling constant for IN-MEDIUM strong interaction
