@@ -19,12 +19,11 @@ from IPython.display import display
 import config
 import pythia
 import plasma
-import hard_particles
 import parton_evolution
 import collision
-import observables
 import plotting
 import event_dataset
+import fragmentation
 
 
 ############
@@ -232,7 +231,7 @@ try:
         """
         logging.info('Evolving particles...')
         for particle in hard_event.particles:
-            logging.debug('Particle {}...'.format(particle.to_kwargs()))
+            logging.debug('Particle {}...'.format(particle.printout()))
 
             #####################################
             # Choose if we evolve this particle #
@@ -264,8 +263,15 @@ try:
         Hadronize hard particles using Lund-String hadronization.
         """
         hard_event_hadrons = pythia.pp_shower_hadronize(hard_event, pythia_record)  # Adds shower history
-        # for p in hard_event_hadrons.particles():
-        #     print(p.statusHepMC())
+
+        """
+        Hadronize particles using fragmentation
+        """
+        logging.info('Fragmenting hard particles...')
+        fragger = fragmentation.Fragger(seed=config.mode.SEED)
+        for particle in hard_event.particles:
+            particle.fragz = fragger.frag(particle)
+            particle.fragz0 = fragger.frag(particle, i=True)
 
         ######################
         # HepMC Event output #
@@ -288,9 +294,9 @@ try:
             f.write(vac_hepmc_event)
 
 
-        # ====================================================================
-        # Hard Particle Dataset Management
-        # ====================================================================
+        ####################################
+        # Hard Particle Dataset Management #
+        ####################################
         # Initialize dataset manager for saving particle data
         if config.mode.WRITE_DATAFRAME:
             logging.info("Writing dataframe to hierarchical dataset")

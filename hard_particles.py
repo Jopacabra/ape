@@ -1,21 +1,19 @@
-import numpy as np
+from dataclasses import dataclass, field
+import copy
+from typing import Any, Iterable, Iterator, Optional, Sequence, TypeVar, Generic
 import logging
-import matplotlib.pyplot as plt
-import math
+
+import numpy as np
 
 import config
-
-from dataclasses import dataclass, field
-from typing import Any, Iterable, Iterator, Optional, Sequence, TypeVar, Generic
 
 class StopEvolve(Exception):
     """ Raise to end parton evolution early. """
 
 # Species table
 # Masses in GeV. PDG IDs follow standard conventions.
-# WARNING!!! The masses for diquarks are just the nominal mass in GeV from Pythia's data tables.
+# WARNING!!! The masses for diquarks are just the constituent mass in GeV from Pythia's data tables.
 # WARNING!!! This is not the same as the masses used for the quarks and gauge bosons in APE evolution
-# WARNING!!! Ape's mass is passed back to Pythia for hadronization... That's not right for the light quarks!
 _PARTICLE_SPECIES: dict[int, dict[str, float | int | str]] = {
     # Light quarks
     1: {"name": "d", "m": 0.00467, "m0":0.330},
@@ -120,15 +118,17 @@ class Particle:
     pz_0: float = field(init=False)
     thermalized: bool = False
 
-    #######################################
-    # Optional shower history information #
-    #######################################
+    # Optional shower history information
     index : int = None # unique identifier for this parton in the shower -- usually from Pythia index
     status : int = 23
     mother1 : int = None
     mother2: int = None
     daughter1 : int = None
     daughter2: int = None
+
+    # Fragmentation information
+    fragz : float = None
+    fragz0 : float = None
 
     def __post_init__(self) -> None:
         # validate parton species and set derived identity fields
@@ -321,15 +321,16 @@ class Particle:
     #############
 
     def copy(self) -> "Particle":
-        return Particle(**self.to_kwargs())
+        return copy.deepcopy(self)
 
     def spawn_child(self, **overrides: Any) -> "Particle":
-        data = self.to_kwargs()
-        data.update(overrides)
-        return Particle(**data)
+        child = copy.deepcopy(self)
+        for k, v in overrides.items():
+            setattr(child, k, v)
+        return child
 
-    def to_kwargs(self) -> dict[str, Any]:
-        """Round-trippable constructor kwargs (matches Parton(...) signature)."""
+    def printout(self) -> dict[str, Any]:
+        """Printable state output for debugging purposes."""
         return {
             "id": self.id,
             "px": self.px,
@@ -343,7 +344,11 @@ class Particle:
         }
 
     def to_dict(self) -> dict[str, Any]:
-        # stable serialization for records / analysis
+        """
+        Stable serialization for records / analysis.
+
+        Note that any field included here will be automatically included in the output dataframes, if written.
+        """
         return {
             "tau": self.tau,
             "x": self.x,
@@ -365,6 +370,8 @@ class Particle:
             "scalein": self.scalein,
             "col": self.col,
             "acol": self.acol,
+            "fragz": self.fragz,
+            "fragz0": self.fragz0,
         }
 
     ###########################
