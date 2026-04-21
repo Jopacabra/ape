@@ -468,7 +468,7 @@ class Particle:
             rng = np.random.default_rng()
             new_p = rng.uniform(-1, 1, 3)  # Sample a random direction
             new_p = new_p / np.linalg.norm(new_p)  # Normalize
-            new_p = np.sqrt(energy**2 - (self.m**2)) * new_p  # Scale momenta using appropriate mass on-shell condition
+            new_p = energy * new_p  # Scale momenta -- this is exclusively the kinetic energy associated w/ 3-momenta
 
             # Set momentum to new momentum.
             self.px = new_p[0]
