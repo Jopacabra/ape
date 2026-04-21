@@ -374,3 +374,20 @@ def monte_carlo_causal_sphere_integral(interpolator, ref, dt, n_samples=10000):
     integral_estimate = np.mean(values) * surface_area
 
     return integral_estimate
+
+
+def config_to_dict(cls, prefix=""):
+    """
+    Flatten the contents of the nested config class into a dictionary.
+    """
+    result = {}
+    for key in dir(cls):
+        if key.startswith("_"):
+            continue
+        value = getattr(cls, key)
+        full_key = f"{prefix}.{key}" if prefix else key
+        if isinstance(value, type):  # It's a nested class
+            result.update(config_to_dict(value, prefix=full_key))
+        else:
+            result[full_key] = value
+    return result

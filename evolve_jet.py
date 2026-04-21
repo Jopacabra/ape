@@ -6,6 +6,7 @@ import json
 import timeit
 from pathlib import Path
 import tempfile
+import inspect
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -24,6 +25,7 @@ import collision
 import plotting
 import event_dataset
 import fragmentation
+import utilities
 
 
 ############
@@ -309,20 +311,18 @@ try:
             else:
                 soft_dict = {}
 
+            # Create a config dictionary
+            flat_config = {}
+            for name, cls in inspect.getmembers(config, inspect.isclass):
+                flat_config.update(utilities.config_to_dict(cls, prefix=name))
+
             # Save particles to hierarchical dataset
             dataset_manager.save_job_output(
                 job_id=job_id,
                 soft_event_seed=seed,
                 event_record=hard_event,
                 soft_event_props= soft_dict,
-                config_dict={
-                    'mode': {k: getattr(config.mode, k) for k in dir(config.mode) if not k.startswith('_')},
-                    'transport': {k: getattr(config.soft_transport, k) for k in dir(config.soft_transport) if
-                                  not k.startswith('_')},
-                    'jet': {k: getattr(config.jet, k) for k in dir(config.jet) if not k.startswith('_')},
-                    'constants': {k: getattr(config.constants, k) for k in dir(config.constants) if
-                                  not k.startswith('_')},
-                },
+                config_dict=flat_config,
             )
 
             logging.info("Particle dataset saved successfully")
