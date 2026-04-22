@@ -51,6 +51,9 @@ jet:  # Parameters for the jet production processes to be run
     K_F_DRIFT: 1.0  # Scale factor for flow drift effect - 1 is perturbative prediction in GW
     RAP_MAX_EVOLVE: 2.5  # Maximum absolute value of initial rapidity for which particles are evolved in the medium.
     EMIN: 3.0  # Minimum energy for particle to be evolved in the medium. Particle gets random thermal final momentum.
+    hadronization:
+        FRAG: True  # Whether to run fragmentation hadronization
+        STRING: True  # Whether to run string hadronization
 global_constants:  # Physical constants to be set by the user.
     # Coupling is set by case selection in ebe scripts. Uses G_RAD by default.
     G: 2.1  # Coupling constant for IN-MEDIUM strong interaction

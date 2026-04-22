@@ -109,6 +109,9 @@ class jet:
     K_BBMG = 1  #float(cfg['jet']['K_BBMG'])
     RAP_MAX_EVOLVE = float(cfg['jet']['RAP_MAX_EVOLVE'])
     EMIN = float(cfg['jet']['EMIN'])
+    class hadronization:
+        FRAG = bool(cfg['jet']['hadronization']['FRAG'])
+        STRING = bool(cfg['jet']['hadronization']['STRING'])
 
 
 # Global constants

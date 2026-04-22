@@ -215,12 +215,12 @@ try:
             etas_0 = 0.0
 
         logging.info(f"Embedding hard scattering at ({tau_0}, {x_0}, {y_0}, {etas_0})")
-        hard_event, event_weight, pythia_record = pythia.scattering(tau=tau_0, x=x_0, y=y_0, etas=etas_0, pythia_event=True, seed=seed+i)
+        hard_event, event_weight, pp_pythia_event = pythia.scattering(tau=tau_0, x=x_0, y=y_0, etas=etas_0, pythia_event=True, seed=seed + i)
         num_hard_particles = len(hard_event.particles)
         logging.info('Hard scattering done.')
 
         logging.info('Hadronizing vacuum result...')
-        vacuum_event_hadrons = pythia.pp_shower_hadronize(hard_event, pythia_record)  # Adds shower history
+        vacuum_event_hadrons = pythia.ape_to_pythia(hard_event, pp_pythia_event)  # Adds shower history
         logging.info('Vacuum hadronization complete.')
 
 
@@ -264,16 +264,22 @@ try:
         """
         Hadronize hard particles using Lund-String hadronization.
         """
-        hard_event_hadrons = pythia.pp_shower_hadronize(hard_event, pythia_record)  # Adds shower history
-
+        if config.jet.hadronization.STRING:
+            AA_pythia_event = pythia.ape_to_pythia(hard_event, pp_pythia_event)  # Adds shower history
+        else:
+            AA_pythia_event = pythia.ape_to_pythia(hard_event, pp_pythia_event, hadronize=False)  # Adds shower history
         """
         Hadronize particles using fragmentation
         """
-        logging.info('Fragmenting hard particles...')
-        fragger = fragmentation.Fragger(seed=config.mode.SEED)
-        for particle in hard_event.particles:
-            particle.fragz = fragger.frag(particle)
-            particle.fragz0 = fragger.frag(particle, i=True)
+        if config.jet.hadronization.FRAG:
+            logging.info('Fragmenting hard particles...')
+            fragger = fragmentation.Fragger(seed=config.mode.SEED)
+            for particle in hard_event.particles:
+                particle.fragz = fragger.frag(particle)
+                particle.fragz0 = fragger.frag(particle, i=True)
+            logging.info('Fragmentation of hard particles complete.')
+        else:
+            logging.info('Skipping fragmentation of hard particles.')
 
         ######################
         # HepMC Event output #
@@ -282,11 +288,12 @@ try:
         Send the output of the Pythia events to a HepMC3 file.
         """
         logging.debug("Saving Medium HepMC3 file...")
-        hepmc_event = pythia.pythia_to_hepmc(hard_event_hadrons, vt=tau_0*np.cosh(etas_0), vx=x_0, vy=y_0, vz=tau_0*np.sinh(etas_0), weight=event_weight)
+        hepmc_event = pythia.pythia_to_hepmc(AA_pythia_event, vt=tau_0 * np.cosh(etas_0), vx=x_0, vy=y_0, vz=tau_0 * np.sinh(etas_0), weight=event_weight)
         hepmc_filename = f"results/hepmc/m/{random_label}.dat"
         # os.remove(hepmc_filename)
         with hp.open(hepmc_filename, "w") as f:
             f.write(hepmc_event)
+        logging.debug("Saved Medium HepMC3 file.")
 
         logging.debug("Saving Vacuum HepMC3 file...")
         vac_hepmc_event = pythia.pythia_to_hepmc(vacuum_event_hadrons, vt=tau_0*np.cosh(etas_0), vx=x_0, vy=y_0, vz=tau_0*np.sinh(etas_0), weight=event_weight)
@@ -294,6 +301,7 @@ try:
         # os.remove(hepmc_filename)
         with hp.open(vac_hepmc_filename, "w") as f:
             f.write(vac_hepmc_event)
+        logging.debug("Saved Vacuum HepMC3 file.")
 
 
         ####################################
@@ -301,7 +309,7 @@ try:
         ####################################
         # Initialize dataset manager for saving particle data
         if config.mode.WRITE_DATAFRAME:
-            logging.info("Writing dataframe to hierarchical dataset")
+            logging.debug("Writing dataframe to hierarchical dataset...")
             dataset_manager = event_dataset.HierarchicalEventDataset(os.path.join(results_path, "particle_dataset"))
             job_id = int(os.environ.get("CONDOR_CLUSTER_ID", "0"))  # Extract from HTC job ID
 
@@ -334,13 +342,14 @@ try:
             logging.info('Visualizing...')
 
             # plotting.plot_trajectories(hard_event, z_axis=None, rap_max=1)
-            plotting.plot_parton_hadron(hard_event=hard_event, hadrons=hard_event_hadrons, rap_max=1.5)
+            plotting.plot_parton_hadron(hard_event=hard_event, hadrons=AA_pythia_event, rap_max=1.5)
             plotting.plot_trajectories(hard_event, z_axis="z", rap_max=None)
             plotting.plot_trajectories(hard_event, z_axis="etas", rap_max=None)
 
     try:
         logging.debug("Cleaning up temporary event directory...")
         temp_dir_obj.cleanup()
+        logging.debug("Cleanup completed.")
     except NameError:
         # No temp directory
         pass

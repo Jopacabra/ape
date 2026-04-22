@@ -289,8 +289,9 @@ def phi_sample_embed(particles, weight):
 
 
 # Function to hadronize a list of particles already including colors and anticolors and get pythia event
-def pp_shower_hadronize(ape_event: hard_particles.EventRecord, shower_record: pythia8.Event = None):
-    logging.info('Hadronizing particles...')
+def ape_to_pythia(ape_event: hard_particles.EventRecord, shower_record: pythia8.Event = None,
+                  seed=0, hadronize=True):
+    logging.info('Preparing final state Pythia event...')
     # Settings
     max_had_runs = 10000
 
@@ -306,7 +307,7 @@ def pp_shower_hadronize(ape_event: hard_particles.EventRecord, shower_record: py
 
     # Use seed based on time
     pythia_had.readString("Random:setSeed = on")
-    pythia_had.readString("Random:seed = 0")
+    pythia_had.readString(f"Random:seed = {seed}")
 
     # Only do the hadron level stuff
     pythia_had.readString("ProcessLevel:all = off")
@@ -397,29 +398,33 @@ def pp_shower_hadronize(ape_event: hard_particles.EventRecord, shower_record: py
     #################################
     # Run the hadronization routine #
     #################################
-    # Try to hadronize until we get one that clears the event check.
-    total_had_runs = 0
-    while total_had_runs < max_had_runs:
+    if hadronize:
+        logging.info('Running Pythia string hadronization...')
+        # Try to hadronize until we get one that clears the event check.
+        total_had_runs = 0
+        while total_had_runs < max_had_runs:
 
-        # Reset to saved event state
-        pythia_had.event = saved_event
+            # Reset to saved event state
+            pythia_had.event = saved_event
 
-        # List particles for debug
+            # List particles for debug
+            # pythia_had.event.list()
+
+            # hadronize - restart if remaining event checks fail
+            event_success = pythia_had.next()
+            if not event_success:
+                total_had_runs += 1  # Add a total hadronization
+                continue
+            total_had_runs += 1  # Add a total hadronization
+            break
+
+        # List particles again for debug
+        logging.debug("Hadronization Event Check Success: {}".format(event_success))
         # pythia_had.event.list()
 
-        # hadronize - restart if remaining event checks fail
-        event_success = pythia_had.next()
-        if not event_success:
-            total_had_runs += 1  # Add a total hadronization
-            continue
-        total_had_runs += 1  # Add a total hadronization
-        break
-
-    # List particles again for debug
-    logging.debug("Hadronization Event Check Success: {}".format(event_success))
-    # pythia_had.event.list()
-
-    logging.info('Hadronization complete.')
+        logging.info('Hadronization complete.')
+    else:
+        logging.info('Skipping Pythia string hadronization...')
     return pythia_had.event
 
 def pythia_to_fastjet(pythia_had: pythia8.Event, rap_max: float=1.5, R: float=0.4, pTmin: float=0.0):
