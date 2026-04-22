@@ -88,6 +88,11 @@ class HierarchicalEventDataset:
             for i, particle in enumerate(event_record.particles)
         ]
         df = pd.DataFrame(particle_records)
+
+        # Add soft event properties as regular columns
+        # Parquet compression handles repetition efficiently
+        for key, value in soft_event_props.items():
+            df[f'soft_{key}'] = float(value) if isinstance(value, (int, float)) else value  # Makes floats of ints
         
         # Optimize dtypes for compression
         self._optimize_dtypes(df)
@@ -105,10 +110,6 @@ class HierarchicalEventDataset:
         for key, value in soft_event_props.items():
             file_metadata[f'soft_{key}'] = str(value)
         
-        # Add config hash for reference
-        # Can't flatten dict to tuple, so hash doesn't work...
-        # file_metadata['config_hash'] = str(hash(tuple(sorted(config_dict.items()))))
-        
         # Attach metadata to table
         table = table.replace_schema_metadata({
             **table.schema.metadata,
@@ -116,16 +117,16 @@ class HierarchicalEventDataset:
         })
         
         # Save to file
-        output_file = self.dataset_dir / f"job_{job_id:06d}_soft_{soft_event_seed}.parquet"
+        output_file = self.dataset_dir / f"job_{job_id}_soft_{soft_event_seed}.parquet"
         pq.write_table(table, str(output_file), compression='snappy')
         
         # Cache metadata for fast filtering
         self.metadata_index[str(output_file)] = soft_event_props
         
         logging.info(f"Saved to {output_file.name}: "
-                    f"{len(event_record.particles)} particles, "
-                    f"v2={soft_event_props.get('v_2', 0):.3f}, "
-                    f"mult={soft_event_props.get('urqmd_dNch_deta', 0):.1f}")
+                    f"{len(event_record.particles)} hard particles, "
+                    f"soft v2={soft_event_props.get('v_2', 0):.3f}, "
+                    f"soft mult={soft_event_props.get('mult', 0):.1f}")
         
         return str(output_file)
 
