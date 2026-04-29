@@ -16,3 +16,6 @@
 [submodule "urqmd-afterburner"]
 	path = urqmd-afterburner
 	url = https://github.com/jbernhard/urqmd-afterburner/
+[submodule "flow-rad-nn"]
+	path = flow-rad-nn
+	url = git@github.com:Jopacabra/flow-rad-nn.git
