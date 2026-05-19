@@ -27,10 +27,9 @@ class Fragger:
     def pz(self, pid, z, pT):
         if pT < 1.14:
             pT = 1.14
-        vals = []
-        for ff in self.ff_set:
-            vals.append(ff.xfxQ2(pid, z, pT**2))
-        return np.mean(vals)
+
+        # We use the zeroth member -- this is the central value of the FF fit.
+        return self.ff_set[0].xfxQ2(pid, z, pT**2)
 
     def frag(self, parton, i=False, num=1):
         # Get jet properties
