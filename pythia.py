@@ -267,8 +267,10 @@ def scattering(pThatmin=config.jet.pythia.PTHATMIN, pThatmax=config.jet.pythia.P
         raise Exception("No particles found in event!")
 
     # Create a list of ape hard_particles.Particle objects
+    num_particles = len(record.particles())
     for i, particle in enumerate(particle_list):
-        ape_particle = hard_particles.Particle.from_pythia(particle, tau=tau, x=x, y=y, etas=etas, tag=int(index_list[i]))
+        ape_particle = hard_particles.Particle.from_pythia(particle, tau=tau, x=x, y=y, etas=etas,
+                                                           mother1=int(index_list[i]), tag=num_particles + i)
         output_particles.append(ape_particle)
 
     # Make an ape hard_particles.EventRecord object
@@ -373,10 +375,10 @@ def ape_to_pythia(ape_event: hard_particles.EventRecord, shower_record: pythia8.
                 e=float(p.E0),  # uses on-shell energy with Pythia mass
                 m=float(p.m0),  # uses Pythia's masses
                 scaleIn=scalein,
-                mother1=int(p.tag),  # Match to the particle's previous index
-                mother2=int(p.tag),  # Match to the particle's previous index
-                daughter1=int(0),
-                daughter2=int(0)
+                mother1=int(p.mother1),  # The particle's previous index, or the emitter's index
+                mother2=int(p.mother2),
+                daughter1=int(p.daughter1),
+                daughter2=int(p.daughter2)
             )
         else:
             pythia_had.event.append(
@@ -410,7 +412,7 @@ def ape_to_pythia(ape_event: hard_particles.EventRecord, shower_record: pythia8.
             # List particles for debug
             # pythia_had.event.list()
 
-            # hadronize - restart if remaining event checks fail
+            # hadronize - retry if remaining event checks fail
             event_success = pythia_had.next()
             if not event_success:
                 total_had_runs += 1  # Add a total hadronization

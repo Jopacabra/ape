@@ -118,13 +118,13 @@ class Particle:
     pz_0: float = field(init=False)
     thermalized: bool = False
 
-    # Optional shower history information
+    # Shower history information
     index : int = None # unique identifier for this parton in the shower -- usually from Pythia index
     status : int = 23
-    mother1 : int = None
-    mother2: int = None
-    daughter1 : int = None
-    daughter2: int = None
+    mother1 : int = 0
+    mother2: int = 0
+    daughter1 : int = 0
+    daughter2: int = 0
 
     # Fragmentation information
     fragz : float = None
@@ -501,7 +501,8 @@ class Particle:
             x: float = 0.0,
             y: float = 0.0,
             etas: float = 0.0,
-            tag: Optional[int] = None,
+            mother1: Optional[int] = None,
+            tag: Optional[int] = None
     ) -> "Particle":
         """
         Build a `Particle` from a single Pythia particle handle/object `p`.
@@ -522,8 +523,8 @@ class Particle:
             col=int(p.col()),
             acol=int(p.acol()),
             tag=tag,
-            mother1=int(p.mother1()),
-            mother2=int(p.mother2()),
+            mother1=int(mother1),
+            mother2=0,  # particle is going to be a direct modification of mother1 after elastic scattering / emission
             daughter1=int(p.daughter1()),
             daughter2=int(p.daughter2())
         )
