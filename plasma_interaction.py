@@ -10,11 +10,10 @@ from pathlib import Path
 
 from utilities import zeta
 
-if config.jet.RAD_MODEL == "aniso_NN":
-    # Get the path of this file and import the radiation NN path
-    script_dir = str(Path(__file__).resolve().parent)
-    sys.path.append(os.path.join(script_dir, 'flow-rad-nn/'))
-    from train_radiation_nn import RadiationEmulatorInference
+# Get the path of this file and import the radiation NN path
+script_dir = str(Path(__file__).resolve().parent)
+sys.path.append(os.path.join(script_dir, 'flow-rad-nn/'))
+from train_radiation_nn import RadiationEmulatorInference
 
 class HadronGas(Exception):
     """
