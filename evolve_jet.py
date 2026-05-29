@@ -25,13 +25,13 @@ import event_dataset
 import fragmentation
 import utilities
 
-if config.jet.RAD_MODEL == "aniso_NN":
-    # Get the path of this file and import the radiation NN path
-    script_dir = str(Path(__file__).resolve().parent)
-    flow_rad_nn_dir = os.path.join(script_dir, 'flow-rad-nn/')
-    print(flow_rad_nn_dir)
-    sys.path.append(flow_rad_nn_dir)
-    from train_radiation_nn import RadiationEmulatorInference
+
+# Get the path of this file and import the radiation NN path
+script_dir = str(Path(__file__).resolve().parent)
+flow_rad_nn_dir = os.path.join(script_dir, 'flow-rad-nn/')
+print(flow_rad_nn_dir)
+sys.path.append(flow_rad_nn_dir)
+from train_radiation_nn import RadiationEmulatorInference
 
 
 ############
