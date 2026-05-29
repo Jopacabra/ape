@@ -7,6 +7,9 @@ import numpy as np
 import pandas as pd
 import config
 
+# Create global rng
+rng = np.random.default_rng(seed=config.mode.SEED)
+
 # Command to run process in the terminal
 # Stolen and modified from DukeQCD "run-events.py":
 # https://github.com/Duke-QCD/hic-eventgen
@@ -121,7 +124,6 @@ def tempDir(location=None):
 # Generate a random (x, y, z) coordinate in a 3D box of l = w = boxSize and h = maxProb
 # Origin at cent of bottom of box.
 def cube_random(num=1, boxSize=1, maxProb=1, seed=None):
-    rng = np.random.default_rng(seed=seed)
     pointArray = np.array([])
     for i in np.arange(0, num):
         x = (boxSize * rng.random()) - (boxSize / 2)
@@ -138,7 +140,6 @@ def cube_random(num=1, boxSize=1, maxProb=1, seed=None):
 # Generate a random (x, y) coordinate in a 2D box of w = boxSize and h = maxProb
 # Origin at bottom left of box.
 def random_2d(num=1, boxSize=1.0, maxProb=1.0):
-    rng = np.random.default_rng()
     pointArray = np.array([])
     for i in np.arange(0, num):
         x = boxSize * rng.random()
@@ -266,7 +267,6 @@ def par_vec(a, b):
 def zeta(q=0, maxAttempts=5, batch=1000):
     # Special cases making things easier
     if q == 0:
-        rng = np.random.default_rng()
         return rng.random() * 2
     elif q == -1:
         return 1

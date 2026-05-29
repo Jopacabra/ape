@@ -6,6 +6,7 @@ import logging
 import numpy as np
 
 import config
+import utilities
 
 class StopEvolve(Exception):
     """ Raise to end parton evolution early. """
@@ -453,11 +454,10 @@ class Particle:
         3 momentum, given pid of parton. Uses rejection sample.
         """
         # Get random points
-        rng = np.random.default_rng()
         for j in range(100):
             num_samples = 1000
-            E_samps = rng.uniform(0, 1, num_samples)  # Random energies, maximum 1 GeV.
-            P_samps = rng.uniform(0, 1, num_samples)
+            E_samps = utilities.rng.uniform(0, 1, num_samples)  # Random energies, maximum 1 GeV.
+            P_samps = utilities.rng.uniform(0, 1, num_samples)
 
             # Compute distribution values for energy values
             if self.isq:  # Use fermion dist. -- Fermi-Dirac distribution
@@ -476,8 +476,7 @@ class Particle:
                 i += 1
 
             # Get num_points random unit 3-vectors for the direction
-            rng = np.random.default_rng()
-            new_p = rng.uniform(-1, 1, 3)  # Sample a random direction
+            new_p = utilities.rng.uniform(-1, 1, 3)  # Sample a random direction
             new_p = new_p / np.linalg.norm(new_p)  # Normalize
             new_p = energy * new_p  # Scale momenta -- this is exclusively the kinetic energy associated w/ 3-momenta
 

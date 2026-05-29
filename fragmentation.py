@@ -5,6 +5,8 @@ import logging
 
 import numpy as np
 
+import utilities
+
 # Object that stores fragmentation function sets and exposes some sampling operations
 class Fragger:
     """
@@ -22,7 +24,7 @@ class Fragger:
         logging.debug(f.getvalue())
 
         # Start rng
-        self.rng = np.random.default_rng(seed=self.seed)
+        self.rng = utilities.rng
 
     def pz(self, pid, z, pT):
         if pT < 1.14:

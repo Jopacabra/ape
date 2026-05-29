@@ -394,7 +394,7 @@ def rad_delta(particle: hard_particles.Particle, medium: plasma.plasma_event, dt
 
 
 # Radiative interaction momentum transfer public using anisotropic model NN API
-def aniso_rad_delta(particle: hard_particles.Particle, medium: plasma.plasma_event, nn: RadiationEmulatorInference, rng: np.random._generator, dtau: float) -> hard_particles.ParticleDelta:
+def aniso_rad_delta(particle: hard_particles.Particle, medium: plasma.plasma_event, nn: RadiationEmulatorInference, dtau: float) -> hard_particles.ParticleDelta:
     # Start counters
     dpx = 0
     dpy = 0
@@ -426,7 +426,7 @@ def aniso_rad_delta(particle: hard_particles.Particle, medium: plasma.plasma_eve
         u_perp=np.linalg.norm(uperp),
         T=temp,
         g=config.constants.G,
-        rng=rng,
+        rng=utilities.rng,
         N_samples=1
     )
 

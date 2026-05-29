@@ -188,7 +188,6 @@ logging.info('Soft event complete created.')
 # Hard Event Evolution #
 ########################
 num_jets = 0  # Counter for total jets analyzed
-rng = np.random.default_rng(seed=seed)
 if config.jet.RAD_MODEL == "aniso_NN":
     # Load radiation neural network -- O(0.01s)
     logging.debug("Loading radiation neural network...")
@@ -202,7 +201,7 @@ try:
 
     hard_event_records = np.array([])
     for i in range(num_hard_events):
-        random_label = int(rng.uniform(1000000000, 9999999999, 1)[0])
+        random_label = int(utilities.rng.uniform(1000000000, 9999999999, 1)[0])
         logging.info(
             f"Starting new hard scattering event {i + 1} of {num_hard_events} with label {random_label}."
         )
@@ -274,9 +273,9 @@ try:
             #########################
             pT0 = particle.pT
             if config.jet.RAD_MODEL == "aniso_nn":
-                parton_evolution.evolve_particle(particle, plasma_object, rng=rng, rad_emulator=rad_emulator)
+                parton_evolution.evolve_particle(particle, plasma_object, rad_emulator=rad_emulator)
             else:
-                parton_evolution.evolve_particle(particle, plasma_object, rng=rng)
+                parton_evolution.evolve_particle(particle, plasma_object)
             pTF = particle.pT
             logging.debug(f"Particle delta pT: {pTF - pT0} GeV")
 
