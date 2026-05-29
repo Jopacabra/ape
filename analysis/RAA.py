@@ -9,17 +9,17 @@ sys.path.insert(0,'..')
 import observables
 
 # results subdirectory for HepMC files
-name = "hepmc_dukeavg_00_w5"
+name = "hepmc"
 
 # Statistics settings
 n_bootstrap_samples = 1000
 
 # Particle cuts
 pTmin_RAA = 2.0
-pTmax_RAA = 20
+pTmax_RAA = 100
 rapmin_RAA = 0.0
 rapmax_RAA = 1000
-num_pt_bins = 10
+num_pt_bins = 15
 pT_bins = np.linspace(pTmin_RAA, pTmax_RAA, num_pt_bins+1)
 
 # Storage for results (much smaller than raw data)
