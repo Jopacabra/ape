@@ -15,8 +15,6 @@ import pyhepmc as hp
 # from particle import literals as lp
 from IPython.display import display
 
-
-
 import config
 import pythia
 import plasma
@@ -26,6 +24,14 @@ import plotting
 import event_dataset
 import fragmentation
 import utilities
+
+if config.jet.RAD_MODEL == "aniso_NN":
+    # Get the path of this file and import the radiation NN path
+    script_dir = str(Path(__file__).resolve().parent)
+    flow_rad_nn_dir = os.path.join(script_dir, 'flow-rad-nn/')
+    print(flow_rad_nn_dir)
+    sys.path.append(flow_rad_nn_dir)
+    from train_radiation_nn import RadiationEmulatorInference
 
 
 ############
@@ -183,6 +189,15 @@ logging.info('Soft event complete created.')
 ########################
 num_jets = 0  # Counter for total jets analyzed
 rng = np.random.default_rng(seed=seed)
+if config.jet.RAD_MODEL == "aniso_NN":
+    # Load radiation neural network -- O(0.01s)
+    logging.debug("Loading radiation neural network...")
+    rad_emulator = RadiationEmulatorInference(
+        model_file=os.path.join(flow_rad_nn_dir, "data/radiation_emulator.pt"),
+        normalization_file=os.path.join(flow_rad_nn_dir, "data/radiation_normalization.json"),
+        device='cpu',
+    )
+    logging.debug("Network loaded.")
 try:
 
     hard_event_records = np.array([])
@@ -250,7 +265,7 @@ try:
             # Perform the evolution #
             #########################
             pT0 = particle.pT
-            parton_evolution.evolve_particle(particle, plasma_object)
+            parton_evolution.evolve_particle(particle, plasma_object, rng=rng, rad_emulator=rad_emulator)
             pTF = particle.pT
             logging.debug(f"Particle delta pT: {pTF - pT0} GeV")
 
