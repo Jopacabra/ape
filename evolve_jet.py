@@ -230,13 +230,16 @@ try:
             etas_0 = 0.0
 
         logging.info(f"Embedding hard scattering at ({tau_0}, {x_0}, {y_0}, {etas_0})")
-        hard_event, event_weight, pp_pythia_event = pythia.scattering(tau=tau_0, x=x_0, y=y_0, etas=etas_0, pythia_event=True, seed=seed + i)
+        hard_event, event_weight = pythia.scattering(tau=tau_0, x=x_0, y=y_0, etas=etas_0, pythia_event=False, seed=seed + i)
         num_hard_particles = len(hard_event.particles)
         logging.info('Hard scattering done.')
 
         logging.info('Hadronizing vacuum result...')
-        vacuum_event_hadrons = pythia.ape_to_pythia(hard_event, pp_pythia_event)  # Adds shower history
+        vacuum_event_hadrons = pythia.ape_to_pythia(hard_event)
         logging.info('Vacuum hadronization complete.')
+
+        # Create a "live" copy of every status > 0 particle in the event that will be modified by Ape.
+        hard_event.spawn_child_particles()
 
 
         #################
@@ -253,6 +256,11 @@ try:
             #####################################
             # Choose if we evolve this particle #
             #####################################
+            # Only evolve positive status particles
+            if particle.status < 0:
+                logging.debug("Negative status. Skipping particle...")
+                continue
+
             # Far forward or backward rapidity particles can't be reasonably treated with our boost-invariance 2+1D medium.
             if np.abs(particle.rap) > config.jet.RAP_MAX_EVOLVE:
                 logging.debug("Large rapidity. Skipping particle...")
@@ -265,7 +273,10 @@ try:
             # Perform the evolution #
             #########################
             pT0 = particle.pT
-            parton_evolution.evolve_particle(particle, plasma_object, rng=rng, rad_emulator=rad_emulator)
+            if config.jet.RAD_MODEL == "aniso_nn":
+                parton_evolution.evolve_particle(particle, plasma_object, rng=rng, rad_emulator=rad_emulator)
+            else:
+                parton_evolution.evolve_particle(particle, plasma_object, rng=rng)
             pTF = particle.pT
             logging.debug(f"Particle delta pT: {pTF - pT0} GeV")
 
@@ -280,9 +291,9 @@ try:
         Hadronize hard particles using Lund-String hadronization.
         """
         if config.jet.hadronization.STRING:
-            AA_pythia_event = pythia.ape_to_pythia(hard_event, pp_pythia_event)  # Adds shower history
+            AA_pythia_event = pythia.ape_to_pythia(hard_event)  # Adds shower history
         else:
-            AA_pythia_event = pythia.ape_to_pythia(hard_event, pp_pythia_event, hadronize=False)  # Adds shower history
+            AA_pythia_event = pythia.ape_to_pythia(hard_event, hadronize=False)  # Adds shower history
         """
         Hadronize particles using fragmentation
         """

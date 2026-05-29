@@ -34,6 +34,10 @@ _PARTICLE_SPECIES: dict[int, dict[str, float | int | str]] = {
     22: {"name": "gamma", "m": 0.0, "m0": 0.0},
     23: {"name": "Z0", "m": 0.0, "m0": 0.0},
     24: {"name": "W+", "m": 0.0, "m0": 0.0},
+    # Pythia internal
+    90: {"name": "event", "m": None, "m0": 0.0},
+    # Beam hadrons
+    2212: {"name": "p+", "m": None, "m0": 0.93827},
     # Diquark states -- beam remnants -- Only have pythia constituent quark masses
     1103: {"name": "dd_1", "m": None, "m0": 0.77133},
     -1103: {"name": "dd_1bar", "m": None, "m0": 0.77133},
@@ -143,8 +147,8 @@ class Particle:
             self.m = float(info["m"])
         except Exception as e:
             # logging.exception(e)
-            logging.debug(e)
-            logging.debug(f"Missing m for id={self.id}, using m0")
+            logging.debug(f"Missing m for id={self.id}, using m0.")
+            # logging.debug(e)
             self.m = None
         
         # set default tau to tau_fs, if none provided
@@ -165,8 +169,8 @@ class Particle:
 
         # Log particle creation
         logging.debug(
-            "Initialized Parton(id=%s, name=%s) x,y=(%.6g, %.6g) p=(%.6g, %.6g, %.6g) tau=%.6g etas=%.6g",
-            self.id, self.name, self.x, self.y, self.px, self.py, self.pz, self.tau, self.etas,
+            "Initialized Particle (status=%s) (id=%s, name=%s) x,y=(%.6g, %.6g) p=(%.6g, %.6g, %.6g) tau=%.6g etas=%.6g",
+            self.status, self.id, self.name, self.x, self.y, self.px, self.py, self.pz, self.tau, self.etas,
         )
 
     ################
@@ -501,7 +505,6 @@ class Particle:
             x: float = 0.0,
             y: float = 0.0,
             etas: float = 0.0,
-            mother1: Optional[int] = None,
             tag: Optional[int] = None
     ) -> "Particle":
         """
@@ -523,8 +526,9 @@ class Particle:
             col=int(p.col()),
             acol=int(p.acol()),
             tag=tag,
-            mother1=int(mother1),
-            mother2=0,  # particle is going to be a direct modification of mother1 after elastic scattering / emission
+            status=int(p.status()),
+            mother1=int(p.mother1()),
+            mother2=int(p.mother2()),
             daughter1=int(p.daughter1()),
             daughter2=int(p.daughter2())
         )
@@ -575,6 +579,52 @@ class EventRecord(Generic[ParticleT]):
     def extend(self, ps: Iterable[ParticleT]) -> None:
         ps_list = list(ps)
         self.particles.extend(ps_list)
+
+    def spawn_child_particles(self):
+        original_length = len(self.particles)
+        logging.debug(f"Spawning child particles for event {self.event_id}")
+        logging.debug(f"Original event record: {original_length} particles")
+        for p in self.particles[0:]:
+            # If the particle is still alive, spawn a child particle
+            if p.status > 0:
+                # Get current length of event record
+                n = len(self.particles)
+
+                # Update daughter tags and status of the original particle to include the child
+                p.status = int(-1*p.status)
+                p.daughter1 = n
+                p.daughter2 = 0
+
+                # Create the new child particle as a copy, updating mothers, daughters, and tag
+                child = p.spawn_child(mother1=p.tag, mother2=0, daughter1=0, daughter2=0, tag=n, status=23)
+
+                # Append child particle to event record
+                self.append(child)
+
+        logging.debug(f"Final event record: {len(self.particles)} particles")
+
+
+
+
+    def spawn_radiation(self, k) -> "Particle":
+        child = Particle(
+            id=int(21),
+            px=float(k[0]),
+            py=float(k[1]),
+            pz=float(k[2]),
+            tau=float(self.tau),  # if None, Particle will choose its default in __post_init__
+            x=float(self.x),
+            y=float(self.y),
+            etas=float(self.etas),
+            scalein=float(self.scalein),
+            col=int(self.col()),
+            acol=int(self.acol()),
+            tag=tag,
+            mother1=int(self.tag),
+            mother2=int(0),
+            daughter1=int(0),
+            daughter2=int(0)
+        )
 
     def copy(self, *, deep_particles: bool = True) -> "EventRecord[ParticleT]":
         """

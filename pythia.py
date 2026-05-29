@@ -10,7 +10,7 @@ import hard_particles
 
 # Function to generate a pp hard scattering
 def scattering(pThatmin=config.jet.pythia.PTHATMIN, pThatmax=config.jet.pythia.PTHATMAX, do_shower=config.jet.pythia.SHOWER,
-               type=config.jet.pythia.TYPE, min_pt=1, get_all=True, tau=config.soft_transport.all.TAU_FS, x=0, y=0, etas=0,
+               type=config.jet.pythia.TYPE, tau=config.soft_transport.all.TAU_FS, x=0, y=0, etas=0,
                selection_power=config.jet.pythia.BIAS_POWER,
                y_max=config.jet.pythia.RAP_MAX, y_min=config.jet.pythia.RAP_MIN, pythia_event=False, quiet=True,
                seed=0):
@@ -93,26 +93,6 @@ def scattering(pThatmin=config.jet.pythia.PTHATMIN, pThatmax=config.jet.pythia.P
     if do_shower:
         # Enable parton-level interactions -- things will happen after the hard scattering.
         pythia_process.readString("PartonLevel:all = on")
-
-        # We want the two hardest scattering outputs
-        if not get_all:
-            # Turn off multi-parton interactions
-            pythia_process.readString("PartonLevel:MPI = off")
-
-            # Turn off "Initial state" radiation with spacelike particles "before the hard process"
-            pythia_process.readString("PartonLevel:ISR = off")
-
-            # Turn off "Final state" radiation with timelike particles
-            pythia_process.readString("PartonLevel:FSR = off")
-
-            # Turn off beam remnants
-            pythia_process.readString("PartonLevel:Remnants = off")  # Turn off beam remnant adding
-            pythia_process.readString("Check:event = off") # Turn off event checks -- Missing beam remnants!
-
-        # We want full jets, including beam remnants and such
-        else:
-            # Keep all of that!
-            pass
     else:
         pythia_process.readString("PartonLevel:all = off")
 
@@ -202,57 +182,16 @@ def scattering(pThatmin=config.jet.pythia.PTHATMIN, pThatmax=config.jet.pythia.P
             continue
 
         particle_list = []
-        if get_all:
-            index_list = []
-            # Collect all of the particles that exist in the final partonic state
-            for i in np.arange(0, num_particles_hist):
-                p = record[i]
-                if (p.status() > 0):  # and p.isHadron() and p.isCharged():
-                    nParticles += 1
-                    particle_list = np.append(particle_list, p)
-                    index_list = np.append(index_list, int(i))
-            success = True
-            break
-        else:
-            # Iterate over all particles and look for the hardest partonic outputs.
-            max_0 = 0
-            max_0_i = 0
-            max_1 = 0
-            max_1_i = 0
-            for i in np.arange(0, num_particles_hist):
-                p = record[i]
-                if (p.status() > 0):  # and p.isHadron() and p.isCharged():
-                    nParticles += 1
-                    if p.pT() > max_1:
-                        if p.pT() > max_0:
-                            max_0_i = i
-                            max_0 = p.pT()
-                        else:
-                            max_1_i = i
-                            max_1 = p.pT()
-            ids = [record[max_0_i].id(), record[max_1_i].id()]
-            ys = [record[max_0_i].y(), record[max_1_i].y()]
-            particle_list = [record[max_0_i], record[max_1_i]]
-            index_list = [max_0_i, max_1_i]
 
-            # Check if the results are The correct flavors, above pt cut, and in rapidity cut
-            if type == "dijet":
-                if ((np.abs(ids[0]) < 3.1) or (np.abs(ids[0]) == 21)) and ((np.abs(ids[1]) < 3.1) or (np.abs(ids[1]) == 21)):
-                    if (max_0 > min_pt) and (max_1 > min_pt):
-                        if np.abs(ys[0]) < y_max and np.abs(ys[1]) < y_max:
-                            if ((max_0 - max_1)/max_0 < soft_emission_cut):
-                                success = True
-                                break  # Stop generating events, keep these particles
-
-            if type == "gamma-jet":
-                if (((np.abs(ids[0]) < 3.1) or (np.abs(ids[0]) == 21) or (np.abs(ids[0]) == 22))
-                        and ((np.abs(ids[1]) < 3.1) or (np.abs(ids[1]) == 21) or (np.abs(ids[1]) == 22))):
-                    if ids[0] == 22 or ids[1] == 22:  # At least one photon
-                        if (max_0 > min_pt) and (max_1 > min_pt):
-                            if np.abs(ys[0]) < y_max and np.abs(ys[1]) < y_max:
-                                if ((max_0 - max_1)/max_0 < soft_emission_cut):
-                                    success = True
-                                    break  # Stop generating events, keep these particles
+        index_list = []
+        # Collect all of the particles into a list
+        for i in np.arange(0, num_particles_hist):
+            p = record[i]
+            # if (p.status() > 0):  # and p.isHadron() and p.isCharged():
+            nParticles += 1
+            particle_list = np.append(particle_list, p)
+            index_list = np.append(index_list, int(i))
+        success = True  # Breaks the while loop
 
     ################################
     # Package and output particles #
@@ -267,10 +206,9 @@ def scattering(pThatmin=config.jet.pythia.PTHATMIN, pThatmax=config.jet.pythia.P
         raise Exception("No particles found in event!")
 
     # Create a list of ape hard_particles.Particle objects
-    num_particles = len(record.particles())
+    # num_particles = len(record.particles())
     for i, particle in enumerate(particle_list):
-        ape_particle = hard_particles.Particle.from_pythia(particle, tau=tau, x=x, y=y, etas=etas,
-                                                           mother1=int(index_list[i]), tag=num_particles + i)
+        ape_particle = hard_particles.Particle.from_pythia(particle, tau=tau, x=x, y=y, etas=etas, tag=i)
         output_particles.append(ape_particle)
 
     # Make an ape hard_particles.EventRecord object
@@ -291,7 +229,7 @@ def phi_sample_embed(particles, weight):
 
 
 # Function to hadronize a list of particles already including colors and anticolors and get pythia event
-def ape_to_pythia(ape_event: hard_particles.EventRecord, shower_record: pythia8.Event = None,
+def ape_to_pythia(ape_event: hard_particles.EventRecord,
                   seed=0, hadronize=True):
     logging.info('Preparing final state Pythia event...')
     # Settings
@@ -335,64 +273,28 @@ def ape_to_pythia(ape_event: hard_particles.EventRecord, shower_record: pythia8.
     # Assemble the event record #
     #############################
     # Clear the event
-    pythia_had.event.reset()
-    if shower_record is not None:
-        # Append particles from shower record to the new record
-        index_list = []
-        for i, p in enumerate(shower_record.particles()[1:]):
-            pythia_had.event.append(
-                id=int(p.id()),
-                status=int((-1) * p.statusAbs()),  # These are the particles before interaction -- no longer positive
-                col=int(p.col()),
-                acol=int(p.acol()),
-                px=float(p.px()),
-                py=float(p.py()),
-                pz=float(p.pz()),
-                e=float(p.e()),  # uses on-shell energy with Pythia mass
-                m=float(p.m0()),  # uses Pythia's masses
-                scaleIn=float(p.scale()),
-                mother1=int(p.mother1()),
-                mother2=int(p.mother2()),
-                daughter1=int(p.daughter1()),
-                daughter2=int(p.daughter2())
-            )
+    pythia_had.event.clear()  # Completely clears the event record, including the 0th "event as a whole" particle
 
-    # Add in edited particles -- note that this requires color connections already handled elsewhere.
-    # print(index_list)
-    for i, p in enumerate(ape_event.particles):
+    # Add in ape particles -- note that this requires color connections already handled elsewhere.
+    # Includes 0th "event as a whole" particle
+    for i, p in enumerate(ape_event.particles):  # Skip the first one that represents the event as a whole.
         scalein = 0.0 if p.scalein is None else float(p.scalein)
-        # print(f"track: {p.index}")
-        # print(f"list: {index_list[i]}")
-        if shower_record is not None:
-            pythia_had.event.append(
-                id=int(p.id),
-                status=int(23),  # typical: outgoing parton for hadronization input
-                col=int(p.col),
-                acol=int(p.acol),
-                px=float(p.px),
-                py=float(p.py),
-                pz=float(p.pz),
-                e=float(p.E0),  # uses on-shell energy with Pythia mass
-                m=float(p.m0),  # uses Pythia's masses
-                scaleIn=scalein,
-                mother1=int(p.mother1),  # The particle's previous index, or the emitter's index
-                mother2=int(p.mother2),
-                daughter1=int(p.daughter1),
-                daughter2=int(p.daughter2)
-            )
-        else:
-            pythia_had.event.append(
-                id=int(p.id),
-                status=int(23),  # typical: outgoing parton for hadronization input
-                col=int(p.col),
-                acol=int(p.acol),
-                px=float(p.px),
-                py=float(p.py),
-                pz=float(p.pz),
-                e=float(p.E0),  # uses on-shell energy with Pythia mass
-                m=float(p.m0),  # uses Pythia's masses
-                scaleIn=scalein,
-            )
+        pythia_had.event.append(
+            id=int(p.id),
+            status=int(p.status),  # typical: outgoing parton for hadronization input
+            col=int(p.col),
+            acol=int(p.acol),
+            px=float(p.px),
+            py=float(p.py),
+            pz=float(p.pz),
+            e=float(p.E0),  # uses on-shell energy with Pythia mass
+            m=float(p.m0),  # uses Pythia's masses
+            scaleIn=scalein,
+            mother1=int(p.mother1),  # The particle's previous index, or the emitter's index
+            mother2=int(p.mother2),
+            daughter1=int(p.daughter1),
+            daughter2=int(p.daughter2)
+        )
 
     # Save the event for repeated hadronization
     saved_event = pythia_had.event
