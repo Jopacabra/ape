@@ -6,7 +6,6 @@ import tempfile
 import numpy as np
 import pandas as pd
 import config
-import utilities
 
 # Command to run process in the terminal
 # Stolen and modified from DukeQCD "run-events.py":

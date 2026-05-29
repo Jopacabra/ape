@@ -6,6 +6,17 @@ import hard_particles
 import plasma_interaction
 import config
 from plasma_interaction import NoMedium
+from pathlib import Path
+import sys
+import os
+
+if config.jet.RAD_MODEL == "aniso_NN":
+    # Get the path of this file and import the radiation NN path
+    script_dir = str(Path(__file__).resolve().parent)
+    flow_rad_nn_dir = os.path.join(script_dir, 'flow-rad-nn/')
+    print(flow_rad_nn_dir)
+    sys.path.append(flow_rad_nn_dir)
+    from train_radiation_nn import RadiationEmulatorInference
 
 """
 This module takes a single hard_particles.Particle object and evolves it throughout the plasma phase of a 
@@ -16,7 +27,7 @@ plasma.
 
 Returns True if the particle was evolved the full tau window requested. Returns false if it was not.
 """
-def evolve_particle(particle : hard_particles.Particle, plasma_object : plasma.plasma_event, tau=None):
+def evolve_particle(particle : hard_particles.Particle, plasma_object : plasma.plasma_event, tau=None, rng:np.random._generator=np.random.default_rng()):
 
     #########################
     # Perform the evolution #
@@ -48,6 +59,16 @@ def evolve_particle(particle : hard_particles.Particle, plasma_object : plasma.p
 
         # Quarks and gluons have medium interaction
         if particle.isq or particle.isg:
+            if config.jet.RAD_MODEL == "aniso_NN":
+                # Load radiation neural network -- O(0.01s)
+                logging.debug("Loading radiation neural network...")
+                rad_emulator = RadiationEmulatorInference(
+                    model_file=os.path.join(flow_rad_nn_dir, "data/radiation_emulator.pt"),
+                    normalization_file=os.path.join(flow_rad_nn_dir, "data/radiation_normalization.json"),
+                    device='cpu',
+                )
+                logging.debug("Network loaded.")
+
             steps_complete = 0
             for step_i in range(num_steps):
 
@@ -68,7 +89,13 @@ def evolve_particle(particle : hard_particles.Particle, plasma_object : plasma.p
 
                 # Compute simple GLV energy loss
                 try:
-                    rad_delta = plasma_interaction.rad_delta(particle, plasma_object, dtau)
+                    if config.jet.RAD_MODEL == "aniso_NN":
+                        rad_delta = plasma_interaction.aniso_rad_delta(particle, plasma_object, rad_emulator, rng, dtau)
+                    elif config.jet.RAD_MODEL == "iso_analytic":
+                        rad_delta = plasma_interaction.rad_delta(particle, plasma_object, dtau)
+                    else:
+                        logging.error("Unknown RAD_MODEL, defaulting to iso_analytic")
+                        rad_delta = plasma_interaction.rad_delta(particle, plasma_object, dtau)
                 except plasma_interaction.HadronGas:
                     logging.debug("Particle escaped plasma.")
                     break

@@ -7,7 +7,7 @@
 # create conda virtual environment with dependencies
 export VIRTUAL_ENV='ape'
 conda config --add channels conda-forge
-conda create --yes --prefix ~/anaconda3/envs/$VIRTUAL_ENV python=3.11.9 numpy scipy cython h5py pandas pyyaml pyarrow conda-forge::pythia8 conda-forge::lhapdf jupyter matplotlib conda-forge::fastjet conda-forge::pyhepmc
+conda create --yes --prefix ~/anaconda3/envs/$VIRTUAL_ENV numpy scipy cython h5py pandas pyyaml pyarrow conda-forge::pythia8 conda-forge::lhapdf jupyter matplotlib conda-forge::fastjet conda-forge::pyhepmc pytorch::pytorch
 
 # Activate conda environment
 source ~/anaconda3/bin/activate ~/anaconda3/envs/$VIRTUAL_ENV

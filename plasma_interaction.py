@@ -4,8 +4,17 @@ import hard_particles
 import plasma
 import utilities
 import logging
+import os
+import sys
+from pathlib import Path
 
 from utilities import zeta
+
+if config.jet.RAD_MODEL == "aniso_NN":
+    # Get the path of this file and import the radiation NN path
+    script_dir = str(Path(__file__).resolve().parent)
+    sys.path.append(os.path.join(script_dir, 'flow-rad-nn/'))
+    from train_radiation_nn import RadiationEmulatorInference
 
 class HadronGas(Exception):
     """
@@ -380,6 +389,56 @@ def rad_delta(particle: hard_particles.Particle, medium: plasma.plasma_event, dt
     dpx += float(E_change * p_hat[0])
     dpy += float(E_change * p_hat[1])
     dpz += float(E_change * p_hat[2])
+
+
+    return hard_particles.ParticleDelta(dpx=dpx, dpy=dpy, dpz=dpz)
+
+
+# Radiative interaction momentum transfer public using anisotropic model NN API
+def aniso_rad_delta(particle: hard_particles.Particle, medium: plasma.plasma_event, nn: RadiationEmulatorInference, rng: np.random._generator, dtau: float) -> hard_particles.ParticleDelta:
+    # Start counters
+    dpx = 0
+    dpy = 0
+    dpz = 0
+
+    # Gather particle and medium properties.
+    p = particle.p3
+    point = particle.coords
+    temp = medium.temp(point)[0]
+    if temp == np.nan:  # Cancel evolution if we exit the plasma space
+        raise NoMedium()
+    elif temp < config.jet.T_HRG:  # Cancel evolution if we exit the plasma phase
+        raise HadronGas()
+    u = np.array([float(medium.x_vel(point)[0]), float(medium.y_vel(point)[0]), float(medium.z_vel(point))])
+    uperp = utilities.perp_vec(a=u, b=p)
+
+    # Get total pathlength traveled in the plasma
+    pathlength = particle.pathlength_since(medium.t0)
+
+    # Get pathlength traveled in this step
+    delta_t, delta_x, delta_y, delta_z = particle.next_pathlength(dtau, cart=True)
+    delta_pathlength = np.sqrt(delta_x ** 2 + delta_y ** 2 + delta_z ** 2)
+
+    # Sample momentum of an emitted gluon from NN, sans-CR
+    integral, k = nn.sample_emission(
+        E=particle.E,
+        z0=particle.tau,
+        zf=particle.tau+dtau,
+        u_perp=np.linalg.norm(uperp),
+        T=temp,
+        g=config.constants.G,
+        rng=rng,
+        N_samples=1
+    )
+
+    # Subtract off emmitted gluon momentum. By construction, the gluon kinematics correspond to:
+    k_z_hat = p / np.linalg.norm(p)  # Direction of k_z is parallel to the hard particle
+    k_x_hat = u / np.linalg.norm(u)  # Direction of k_x is parallel to the transverse flow
+    k_y_hat = np.cross(k_z_hat, k_x_hat)  # Direction of k_y is perp to both of the above, k_x x k_y = k_z, permute to k_z x k_x = k_y
+
+    dpx += float(-1 * k[0])
+    dpy += float(-1 * k[1])
+    dpz += float(-1 * k[2])
 
 
     return hard_particles.ParticleDelta(dpx=dpx, dpy=dpy, dpz=dpz)
