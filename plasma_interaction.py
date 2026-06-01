@@ -394,13 +394,35 @@ def rad_delta(particle: hard_particles.Particle, medium: plasma.plasma_event, dt
 
 
 # Radiative interaction momentum transfer public using anisotropic model NN API
-def aniso_rad_delta(particle: hard_particles.Particle, medium: plasma.plasma_event, nn: RadiationEmulatorInference, dtau: float) -> hard_particles.ParticleDelta:
+def aniso_rad_delta(particle: hard_particles.Particle, medium: plasma.plasma_event, k: np.ndarray) -> hard_particles.ParticleDelta:
     # Start counters
     dpx = 0
     dpy = 0
     dpz = 0
 
+    # Align momentum transfer to coordinate system
+    lf_momentum = utilities.lf_emission_momentum(k=k, particle=particle, medium=medium)
+    dp = (-1) * lf_momentum
+
+    dpx += float(dp[0])
+    dpy += float(dp[1])
+    dpz += float(dp[2])
+
+    # Return particle delta
+    return hard_particles.ParticleDelta(dpx=dpx, dpy=dpy, dpz=dpz)
+
+
+# Radiation distribution summoner
+def aniso_rad_dist(particle: hard_particles.Particle, medium: plasma.plasma_event,
+                   x_values: np.ndarray, kx_values: np.ndarray, ky_values: np.ndarray, dtau: float):
     # Gather particle and medium properties.
+    if particle.isq:
+        CR = 4/3
+    elif particle.isg:
+        CR = 3
+    else:
+        # Default to quark CF
+        CR = 4/3
     p = particle.p3
     point = particle.coords
     temp = medium.temp(point)[0]
@@ -411,33 +433,23 @@ def aniso_rad_delta(particle: hard_particles.Particle, medium: plasma.plasma_eve
     u = np.array([float(medium.x_vel(point)[0]), float(medium.y_vel(point)[0]), float(medium.z_vel(point))])
     uperp = utilities.perp_vec(a=u, b=p)
 
-    # Get total pathlength traveled in the plasma
-    pathlength = particle.pathlength_since(medium.t0)
-
     # Get pathlength traveled in this step
     delta_t, delta_x, delta_y, delta_z = particle.next_pathlength(dtau, cart=True)
     delta_pathlength = np.sqrt(delta_x ** 2 + delta_y ** 2 + delta_z ** 2)
 
-    # Sample momentum of an emitted gluon from NN, sans-CR
-    integral, k = nn.sample_emission(
-        E=particle.E,
+    # Compute number distribution of radiation generated in this step
+    dtau_rad_dist = utilities.rad_emulator.compute_grid(
+        E=particle.E0,  # Use E0 to avoid rescaling the meaning of x between steps
         z0=particle.tau,
-        zf=particle.tau+dtau,
+        zf=particle.tau + delta_pathlength,
         u_perp=np.linalg.norm(uperp),
         T=temp,
         g=config.constants.G,
-        rng=utilities.rng,
-        N_samples=1
-    )
+        x_values=x_values,
+        kx_values=kx_values,
+        ky_values=ky_values)
 
-    # Subtract off emmitted gluon momentum. By construction, the gluon kinematics correspond to:
-    k_z_hat = p / np.linalg.norm(p)  # Direction of k_z is parallel to the hard particle
-    k_x_hat = u / np.linalg.norm(u)  # Direction of k_x is parallel to the transverse flow
-    k_y_hat = np.cross(k_z_hat, k_x_hat)  # Direction of k_y is perp to both of the above, k_x x k_y = k_z, permute to k_z x k_x = k_y
+    # Mirror across ky -- Flip array, then concat along that axis.
+    dtau_rad_dist = np.concat((np.flip(dtau_rad_dist, axis=2), dtau_rad_dist), axis=2)
 
-    dpx += float(-1 * k[0])
-    dpy += float(-1 * k[1])
-    dpz += float(-1 * k[2])
-
-
-    return hard_particles.ParticleDelta(dpx=dpx, dpy=dpy, dpz=dpz)
+    return CR * dtau_rad_dist

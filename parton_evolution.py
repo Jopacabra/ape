@@ -1,14 +1,13 @@
 import logging
 import numpy as np
+from typing_extensions import NoDefault
 
 import plasma
 import hard_particles
 import plasma_interaction
 import config
 from plasma_interaction import NoMedium
-from pathlib import Path
-import sys
-import os
+import utilities
 import time
 
 
@@ -19,9 +18,23 @@ plasma.Plasma object.
 If a tau value is provided, the particle will be evolved by that amount of time. Otherwise, it will be evolved to the end of the 
 plasma.
 
-Returns True if the particle was evolved the full tau window requested. Returns false if it was not.
+Returns a list of emmitted particle momenta, plus
+True if the particle was evolved the full tau window requested or false if it was not.
 """
-def evolve_particle(particle : hard_particles.Particle, plasma_object : plasma.plasma_event, tau=None, rng:np.random._generator=np.random.default_rng(), rad_emulator=None):
+def evolve_particle(particle : hard_particles.Particle, plasma_object : plasma.plasma_event, tau=None):
+    # Create list of emitted particles to be tracked later
+    emission_momenta_total = []
+    emission_coords_total = []
+
+    # Start Radiation Tracker, if necessary
+    if config.jet.RAD_MODEL == "aniso_NN":
+        x_points = 10  # Number of log-spaced points in x to compute
+        k_points = 50  # Even number of lin-spaced points in kx and ky to compute
+        max_kx_ky = 0.05*particle.E0  # Maybe should be dependent on energy, needs testing.
+        x_values = np.logspace(-4, 0, x_points)
+        kx_values = np.linspace(-max_kx_ky, max_kx_ky, k_points)
+        ky_values = np.linspace(-max_kx_ky, max_kx_ky, k_points)
+        rad_dist = np.zeros(shape=(x_points, k_points, k_points))
 
     #########################
     # Perform the evolution #
@@ -66,7 +79,7 @@ def evolve_particle(particle : hard_particles.Particle, plasma_object : plasma.p
                     logging.debug(
                         "Particle energy approaching medium scale. Sampling final momentum from thermal dist...")
                     particle.thermal_sample()  # Samples and sets a final momentum from a thermal distribution
-                    return False  # Don't bother to freestream -- save time
+                    return emission_momenta_total, emission_coords_total, False  # Don't bother to freestream -- save time
 
                 #############
                 # Radiative #
@@ -76,9 +89,63 @@ def evolve_particle(particle : hard_particles.Particle, plasma_object : plasma.p
                 try:
                     if config.jet.RAD_MODEL == "aniso_NN":
                         t0 = time.time()
-                        rad_delta = plasma_interaction.aniso_rad_delta(particle, plasma_object, rad_emulator, rng, dtau)
+                        emission_momenta = []
+                        emission_coords = []
+                        dtau_rad_dist = plasma_interaction.aniso_rad_dist(particle=particle, medium=plasma_object, dtau=dtau,
+                                                                    kx_values=kx_values, ky_values=ky_values[int(k_points / 2)::],
+                                                                    x_values=x_values)
+
+                        rad_dist = rad_dist + dtau_rad_dist
                         dt = time.time() - t0
                         logging.debug(f"Radiation computed in {dt}s")
+
+                        # Compute integral of complete radiation distribution
+                        N_kx_x = np.trapezoid(rad_dist, ky_values, axis=2)  # Integrate over ky -> shape: (n_x, n_kx)
+                        N_x = np.trapezoid(N_kx_x, kx_values, axis=1)  # Integrate over kx -> shape: (n_x,)
+                        # x integration in log-space (accounts for log-spaced grid) -- includes Jacobian, factor of x
+                        total_integral = np.trapezoid(N_x * x_values, np.log(x_values))  # Integrate over x -> scalar
+
+                        # Check if we should emit a particle
+                        N_norm = 1
+                        total_k = np.array([0, 0, 0])
+                        current_integral = total_integral
+                        n = 0
+                        while current_integral >= N_norm:
+                            n += 1
+                            logging.debug("Emitting gluon")
+                            # Sample the distribution for emission kinematics in the radiation frame
+                            k = utilities.sample_rad_dist(rad_dist, E=particle.E0, N_samples=1,
+                                                          kx_values=kx_values, ky_values=ky_values, x_values=x_values)
+                            coords = particle.coords
+
+                            # Transform emission momentum to lab frame
+                            logging.debug(k)
+                            k = utilities.lf_emission_momentum(k=k, particle=particle, medium=plasma_object)
+                            logging.debug(k)
+
+                            # Append momenta and coords to list for this step
+                            emission_momenta.append(k)
+                            emission_coords.append(coords)
+
+                            # Append momenta and coords to complete evolution list
+                            emission_momenta_total.append(k)
+                            emission_coords_total.append(coords)
+
+                            # Reduce number of total emissions remaining by 1
+                            current_integral -= N_norm
+
+                        # Rescale distribution, removing "n gluons" of emission probability
+                        rad_dist = ((total_integral - n*N_norm) / total_integral) * rad_dist
+
+                        if n == 0:
+                            # No emission, so set radiation delta to zero
+                            rad_delta = hard_particles.ParticleDelta(dpx=0, dpy=0, dpz=0)
+                        else:
+                            # Create particle delta opposite to the emitted particle, in the lab coordinate system
+                            total_k = np.sum(emission_momenta, axis=0)  # Sum only those from this step
+                            rad_delta = hard_particles.ParticleDelta(dpx=total_k[0], dpy=total_k[1], dpz=total_k[2])
+
+
                     elif config.jet.RAD_MODEL == "iso_analytic":
                         rad_delta = plasma_interaction.rad_delta(particle, plasma_object, dtau)
                     else:
@@ -135,7 +202,7 @@ def evolve_particle(particle : hard_particles.Particle, plasma_object : plasma.p
                 for step_j in range(steps_complete, num_steps):
                     particle.prop(dtau=dtau)
 
-            return True
+            return emission_momenta_total, emission_coords_total, True
 
         # EW Bosons have no medium interaction, so they should freestream through the medium
         elif particle.isEWB:
@@ -144,19 +211,19 @@ def evolve_particle(particle : hard_particles.Particle, plasma_object : plasma.p
                 # Propagate particle
                 particle.prop(dtau=dtau)
 
-            return True
+            return emission_momenta_total, emission_coords_total, True
 
         else:
-            return False
+            return emission_momenta_total, emission_coords_total, False
 
 
     except hard_particles.StopEvolve as e:
         logging.debug(e)
-        return False
+        return emission_momenta_total, emission_coords_total, False
 
     except Exception as e:
         logging.exception(e)
         logging.error(e)
-        return False
+        return emission_momenta_total, emission_coords_total, False
 
 

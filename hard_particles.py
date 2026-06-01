@@ -99,7 +99,7 @@ class Particle:
     scalein: float = None
     col: int = None
     acol: int = None
-    tag: int = None
+    tag: int | None = None
 
     # filled in post-init
     m: float | None = field(init=False)
@@ -546,6 +546,10 @@ class EventRecord(Generic[ParticleT]):
     weight: Optional[float] = None
     event_id: Optional[int] = None
     event_seed: Optional[int] = None
+    event_tau0: float = 0.0
+    event_x0: float = 0.0
+    event_y0: float = 0.0
+    event_etas0: float = 0.0
     meta: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -603,27 +607,59 @@ class EventRecord(Generic[ParticleT]):
         logging.debug(f"Final event record: {len(self.particles)} particles")
 
 
+    def spawn_radiation(self, tag, k, coords) -> "Particle":
+        """
+        Spawn a radiated gluon at the current spacetime position with lab frame momentum k.
+        """
+        parent = self.particles[tag]
 
+        # Radiation is always a live gluon at this spacetime position at the end of the record.
+        new_tag = len(self.particles)
 
-    def spawn_radiation(self, k) -> "Particle":
-        child = Particle(
-            id=int(21),
-            px=float(k[0]),
-            py=float(k[1]),
-            pz=float(k[2]),
-            tau=float(self.tau),  # if None, Particle will choose its default in __post_init__
-            x=float(self.x),
-            y=float(self.y),
-            etas=float(self.etas),
-            scalein=float(self.scalein),
-            col=int(self.col()),
-            acol=int(self.acol()),
-            tag=tag,
-            mother1=int(self.tag),
-            mother2=int(0),
-            daughter1=int(0),
-            daughter2=int(0)
+        # Radiation has color relations with parent
+        if parent.isq:
+            emission_col = parent.col
+            emission_acol = parent.col + 1
+            parent.col = emission_acol
+        elif parent.isg:
+            a = utilities.rng.choice([0,1])
+            if a == 0:
+                emission_col = parent.col
+                emission_acol = parent.col + 1
+                parent.col = emission_acol
+            elif a == 1:
+                emission_col = parent.col + 1
+                emission_acol = parent.col
+                parent.acol = emission_col
+        else:
+            emission_col = 0
+            emission_acol = 0
+
+        emission = Particle(
+            id=21,  # Gluon
+            px=k[0],  # Has k momentum
+            py=k[1],
+            pz=k[2],
+            tau=coords[0],  # Current spacetime position
+            x=coords[1],
+            y=coords[2],
+            etas=coords[3],
+            scalein=np.sqrt(np.dot(k,k)),  # Scale of emission ??? Need to check this.
+            col=emission_col,  # Splits color from parent
+            acol=emission_acol,
+            tag=new_tag,  # No tag, since it is unplaced in the event record
+            status=23,  # standard Pythia status for hadronization
+            mother1=tag,  # Radiated by this particle
+            mother2=0,
+            daughter1=0,  # No radiation from this particle yet, so no daughters
+            daughter2=0,
         )
+
+        # Update parent particle's daughters
+        self.append(emission)
+        self.particles[tag].daughter1 = new_tag
+
+        return emission
 
     def copy(self, *, deep_particles: bool = True) -> "EventRecord[ParticleT]":
         """
@@ -646,15 +682,33 @@ class EventRecord(Generic[ParticleT]):
         )
 
     def azimuthal_rotate(self, phi, initial=False):
-        """Rotate all particles by phi radians in the transverse plane."""
+        """Rotate all particles by phi radians in the transverse plane -- only for before evolution..."""
         for i in range(len(self.particles)):
             self.particles[i].azimuthal_rotate(phi, initial=initial)
 
-    def set_prod_point(self, x, y):
-        """Rotate all particles by phi radians in the transverse plane."""
+    def set_prod_point(self, tau, x, y, etas):
+        """
+        Shift position of the hard scattering in the transverse plane -- only for before evolution...
+        No history modification implemented.
+        """
+
+        # Iterate over particles
         for i in range(len(self.particles)):
-            self.particles[i].x_0 = x
-            self.particles[i].y_0 = y
+            # Shift initial positions
+            self.particles[i].tau_0 = self.particles[i].tau_0 - self.event_tau0 + tau
+            self.particles[i].x_0 = self.particles[i].x_0 - self.event_x0 + x
+            self.particles[i].y_0 = self.particles[i].y_0 - self.event_y0 + y
+            self.particles[i].etas_0 = self.particles[i].etas_0 - self.event_etas0 + etas
+
+            # Shift histories
+            # ...
+
+        # Shift event transverse coordinates
+        self.event_tau0 = tau
+        self.event_x0 = x
+        self.event_y0 = y
+        self.event_etas0 = etas
+
 
     @classmethod
     def from_particles(

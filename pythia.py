@@ -212,7 +212,8 @@ def scattering(pThatmin=config.jet.pythia.PTHATMIN, pThatmax=config.jet.pythia.P
         output_particles.append(ape_particle)
 
     # Make an ape hard_particles.EventRecord object
-    ape_event = hard_particles.EventRecord(particles=output_particles, weight=weight)
+    ape_event = hard_particles.EventRecord(particles=output_particles, weight=weight,
+                                           event_tau0=tau, event_x0=x, event_y0=y, event_etas0=etas)
 
     if pythia_event:
         return ape_event, weight, record

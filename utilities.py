@@ -1,14 +1,35 @@
 import logging
 import math
 import os
+import sys
+from pathlib import Path
 import subprocess
 import tempfile
 import numpy as np
 import pandas as pd
 import config
+import hard_particles
+import plasma
 
 # Create global rng
 rng = np.random.default_rng(seed=config.mode.SEED)
+
+# Load neural network, if in aniso_NN mode.
+if config.jet.RAD_MODEL == "aniso_NN":
+    # Get the path of this file and import the radiation NN path
+    script_dir = str(Path(__file__).resolve().parent)
+    flow_rad_nn_dir = os.path.join(script_dir, 'flow-rad-nn/')
+    sys.path.append(flow_rad_nn_dir)
+    from train_radiation_nn import RadiationEmulatorInference
+
+    # Load radiation neural network -- O(0.01s)
+    logging.debug("Loading radiation neural network...")
+    rad_emulator = RadiationEmulatorInference(
+        model_file=os.path.join(flow_rad_nn_dir, "data/radiation_emulator.pt"),
+        normalization_file=os.path.join(flow_rad_nn_dir, "data/radiation_normalization.json"),
+        device='cpu',
+    )
+    logging.debug("Network loaded.")
 
 # Command to run process in the terminal
 # Stolen and modified from DukeQCD "run-events.py":
@@ -275,7 +296,7 @@ def zeta(q=0, maxAttempts=5, batch=1000):
     while attempt < maxAttempts:
         # Generate random point in 3D box of l = w = gridWidth and height maximum temp.^6
         # Origin at center of bottom of box
-        pointArray = utilities.random_2d(num=batch, boxSize=q + 2, maxProb=1)
+        pointArray = random_2d(num=batch, boxSize=q + 2, maxProb=1)
         for point in pointArray:
             x = point[0]
             y = point[1]
@@ -390,3 +411,61 @@ def config_to_dict(cls, prefix=""):
         else:
             result[full_key] = value
     return result
+
+
+def lf_emission_momentum(k: np.ndarray, particle, medium: plasma.plasma_event):
+    """
+    Function to transform the 3-momentum of an emission from the jet frame to the lab frame
+    """
+
+    # Gather particle and medium properties.
+    p = particle.p3
+    point = particle.coords
+    u = np.array([float(medium.x_vel(point)[0]), float(medium.y_vel(point)[0]), float(medium.z_vel(point))])
+    uperp = perp_vec(a=u, b=p)
+
+    # Subtract off emmitted gluon momentum. By construction, the gluon kinematics correspond to:
+    k_z_hat = p / np.linalg.norm(p)  # Direction of k_z is parallel to the hard particle
+    k_x_hat = uperp / np.linalg.norm(uperp)  # Direction of k_x is parallel to the transverse flow
+    k_y_hat = np.cross(k_z_hat, k_x_hat)  # Direction of k_y is perp to both of the above, k_x x k_y = k_z, permute to k_z x k_x = k_y
+
+    # Return transformed momentum 3-vector
+    return np.array(k[0]*k_x_hat + k[1]*k_y_hat + k[2]*k_z_hat)
+
+
+def sample_rad_dist(rad_dist, E, x_values, kx_values, ky_values, N_samples=1):
+    """
+    Function to sample radiation distribution for kx, ky, kz.
+    Treat dI/(dxdkxdky) as an (unnormalized) 3D probability density and draw N_samples points (x, kx, ky) from it.
+    """
+
+    # Build a normalized flat PDF, then a CDF
+    I_flat = rad_dist.ravel()
+    I_flat_pos = np.clip(I_flat, 0, None)  # ensure non-negative
+    pdf = I_flat_pos / I_flat_pos.sum()  # normalize to sum to 1
+    cdf = np.cumsum(pdf)  # build CDF
+    cdf[-1] = 1.0  # Force exact upper bound — removes all floating point slop
+
+    # Draw uniform samples and find where they land in the CDF
+    uniform_samples = rng.uniform(size=N_samples)
+    sign_samples = rng.choice([-1, 1], size=N_samples)
+    flat_indices = np.searchsorted(cdf, uniform_samples)  # shape: (N_samples,)
+
+    # Convert flat indices back to 3D grid indices
+    ix, ikx, iky = np.unravel_index(flat_indices, rad_dist.shape)
+
+    # Look up the corresponding coordinate values
+    sampled_x = x_values[ix]
+    sampled_kx = kx_values[ikx]
+    sampled_ky = sign_samples * ky_values[iky]  # Apply a random sign to the ky values to simulate symmetric -ky values
+
+    # Actual longitudinal component of the momentum vector
+    # We know $k^+ = x p^+$, so we apply the lightcone non-diagonal metric and the on-shell condition, $k^2 = 0$
+    # sampled_kz = (1 / np.sqrt(2)) * (sampled_x * E - ((sampled_kx ** 2 + sampled_ky ** 2) / (2 * sampled_x * E)))
+    sampled_kz = sampled_x * E
+    emission_momentum = np.column_stack([sampled_kx, sampled_ky, sampled_kz])
+
+    if N_samples == 1:
+        return np.reshape(emission_momentum, 3)
+    else:
+        return emission_momentum

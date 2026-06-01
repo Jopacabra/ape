@@ -192,8 +192,8 @@ def plot_parton_hadron(hard_event : hard_particles.EventRecord, hadrons : pythia
                 raise ValueError(f"Particle {idx} has unexpected history shape: {traj.shape}")
 
             tau = np.array(traj[:, col_index["tau"]])
-            x = np.array(traj[:, col_index["x"]]) - p.x_0
-            y = np.array(traj[:, col_index["y"]]) - p.y_0
+            x = np.array(traj[:, col_index["x"]]) - hard_event.event_x0
+            y = np.array(traj[:, col_index["y"]]) - hard_event.event_y0
 
             pid = getattr(p, "id", None)
             color = id_to_color.get(pid, None)

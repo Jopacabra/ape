@@ -26,19 +26,14 @@ import fragmentation
 import utilities
 
 
-# Get the path of this file and import the radiation NN path
-script_dir = str(Path(__file__).resolve().parent)
-flow_rad_nn_dir = os.path.join(script_dir, 'flow-rad-nn/')
-print(flow_rad_nn_dir)
-sys.path.append(flow_rad_nn_dir)
-from train_radiation_nn import RadiationEmulatorInference
-
-
 ############
 # Settings #
 ############
 # Visualization options
-visualize = False
+visualize = True
+visualize_2D = True
+visualize_3Dz = True
+visualize_3Detas = False
 
 # Event options
 num_hard_events = config.mode.NUM_HARD
@@ -188,15 +183,6 @@ logging.info('Soft event complete created.')
 # Hard Event Evolution #
 ########################
 num_jets = 0  # Counter for total jets analyzed
-if config.jet.RAD_MODEL == "aniso_NN":
-    # Load radiation neural network -- O(0.01s)
-    logging.debug("Loading radiation neural network...")
-    rad_emulator = RadiationEmulatorInference(
-        model_file=os.path.join(flow_rad_nn_dir, "data/radiation_emulator.pt"),
-        normalization_file=os.path.join(flow_rad_nn_dir, "data/radiation_normalization.json"),
-        device='cpu',
-    )
-    logging.debug("Network loaded.")
 try:
 
     hard_event_records = np.array([])
@@ -244,42 +230,57 @@ try:
         #################
         # Jet Evolution #
         #################
+        round_no = 0
+        passed_particles = 0
+        max_rad_gens = 1  # Maximum number of emissions from a single hard particle lineage
+        while True:  # Keep going until all particles are evolved
+            """
+            Perform the evolution on each particle
+            """
+            logging.info(f'Evolving particles, round {round_no}...')
+            for particle in hard_event.particles[passed_particles:]:  # Iterate over un-evolved particles in the event
+                logging.debug('Particle {}...'.format(particle.printout()))
+                passed_particles += 1
 
-        """
-        Perform the evolution on each particle
-        """
-        logging.info('Evolving particles...')
-        for particle in hard_event.particles:
-            logging.debug('Particle {}...'.format(particle.printout()))
+                #####################################
+                # Choose if we evolve this particle #
+                #####################################
+                # Only evolve positive status particles
+                if particle.status < 0:
+                    logging.debug("Negative status. Skipping particle...")
+                    continue
 
-            #####################################
-            # Choose if we evolve this particle #
-            #####################################
-            # Only evolve positive status particles
-            if particle.status < 0:
-                logging.debug("Negative status. Skipping particle...")
-                continue
+                # Far forward or backward rapidity particles can't be reasonably treated with our boost-invariance 2+1D medium.
+                if np.abs(particle.rap) > config.jet.RAP_MAX_EVOLVE:
+                    logging.debug("Large rapidity. Skipping particle...")
+                    continue
+                if not particle.isg and not particle.isq and not particle.isEWB:
+                    logging.debug("Untreated particle. Skipping particle...")
+                    continue
 
-            # Far forward or backward rapidity particles can't be reasonably treated with our boost-invariance 2+1D medium.
-            if np.abs(particle.rap) > config.jet.RAP_MAX_EVOLVE:
-                logging.debug("Large rapidity. Skipping particle...")
-                continue
-            if not particle.isg and not particle.isq and not particle.isEWB:
-                logging.debug("Untreated particle. Skipping particle...")
-                continue
+                #########################
+                # Perform the evolution #
+                #########################
+                pT0 = particle.pT
+                emission_momenta, emission_coords, evolution_complete = parton_evolution.evolve_particle(particle, plasma_object)
+                pTF = particle.pT
+                logging.debug(f"Particle delta pT: {pTF - pT0} GeV")
 
-            #########################
-            # Perform the evolution #
-            #########################
-            pT0 = particle.pT
-            if config.jet.RAD_MODEL == "aniso_nn":
-                parton_evolution.evolve_particle(particle, plasma_object, rad_emulator=rad_emulator)
-            else:
-                parton_evolution.evolve_particle(particle, plasma_object)
-            pTF = particle.pT
-            logging.debug(f"Particle delta pT: {pTF - pT0} GeV")
 
-        logging.info('Particle evolution complete')
+                # Create the emissions at the end of the event record
+                if round_no < max_rad_gens:  # Only create new particles for the first round of emissions
+                    if len(emission_momenta) > 0:
+                        for i in range(0, len(emission_momenta)):
+
+                            hard_event.spawn_radiation(particle.tag, emission_momenta[i], emission_coords[i])
+                    else:
+                        pass
+
+            logging.info(f'Evolution round {round_no} complete.')
+            if passed_particles == len(hard_event.particles):
+                logging.info('All particles evolved.')
+                break
+            round_no += 1
 
 
         #################
@@ -367,9 +368,12 @@ try:
             logging.info('Visualizing...')
 
             # plotting.plot_trajectories(hard_event, z_axis=None, rap_max=1)
-            plotting.plot_parton_hadron(hard_event=hard_event, hadrons=AA_pythia_event, rap_max=1.5)
-            plotting.plot_trajectories(hard_event, z_axis="z", rap_max=None)
-            plotting.plot_trajectories(hard_event, z_axis="etas", rap_max=None)
+            if visualize_2D:
+                plotting.plot_parton_hadron(hard_event=hard_event, hadrons=AA_pythia_event, rap_max=1.5)
+            if visualize_3Dz:
+                plotting.plot_trajectories(hard_event, z_axis="z", rap_max=None)
+            if visualize_3Detas:
+                plotting.plot_trajectories(hard_event, z_axis="etas", rap_max=None)
 
     try:
         logging.debug("Cleaning up temporary event directory...")
