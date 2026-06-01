@@ -154,7 +154,7 @@ class Particle:
         
         # set default tau to tau_fs, if none provided
         if self.tau is None:
-            self.tau = config.soft_transport.hydro.TAU_FS
+            self.tau = config.soft_transport.all.TAU_FS
 
         # set initial snapshot
         self.tau_0 = float(self.tau)
