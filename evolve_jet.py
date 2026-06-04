@@ -7,6 +7,7 @@ import timeit
 from pathlib import Path
 import tempfile
 import inspect
+from concurrent.futures import ProcessPoolExecutor, as_completed
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -176,12 +177,84 @@ else:
         logging.error("Invalid event type or path.")
         raise ValueError("Invalid event type.")
 
-logging.info('Soft event complete created.')
+logging.info('Soft event created.')
 
 
 ########################
 # Hard Event Evolution #
 ########################
+# Global variables that will be filled on a per-worker basis
+_medium = None
+_rng = None
+_nn = None
+hydro_filepath = event_type
+
+# Particle evolution worker initializer
+def _worker_init(hydro_filepath, child_seeds):
+    global _medium, _rng, _nn
+
+    # Reconstruct medium -- does not include the medium metadata, which is unneeded for the evolution.
+    plasma_file = plasma.osu_hydro_file(hydro_filepath)
+    _medium = plasma.plasma_event(hydro_object=plasma_file)
+
+    # Get an RNG for this worker
+    worker_id = os.getpid() % len(child_seeds)
+    _rng = np.random.default_rng(child_seeds[worker_id])
+
+    # Load neural network, if in aniso_NN mode.
+    if config.jet.RAD_MODEL == "aniso_NN":
+        # Get the path of this file and import the radiation NN path
+        script_dir = str(Path(__file__).resolve().parent)
+        flow_rad_nn_dir = os.path.join(script_dir, 'flow-rad-nn/')
+        sys.path.append(flow_rad_nn_dir)
+        from train_radiation_nn import RadiationEmulatorInference
+
+        # Load radiation neural network -- O(0.01s)
+        logging.debug("Loading radiation neural network...")
+        _nn = RadiationEmulatorInference(
+            model_file=os.path.join(flow_rad_nn_dir, "data/radiation_emulator.pt"),
+            normalization_file=os.path.join(flow_rad_nn_dir, "data/radiation_normalization.json"),
+            device='cpu',
+        )
+        logging.debug("Network loaded.")
+    else:
+        _nn = None
+
+def treat_particle(particle):
+    """
+    1. Check whether to evolve a particle
+    2. Evolve if necessary
+    3. Return modified particle and lists of emission momenta and emission coordinates
+    """
+    global _medium, _rng, _nn
+    logging.debug('Particle {}...'.format(particle.printout()))
+
+    #####################################
+    # Choose if we evolve this particle #
+    #####################################
+    # Only evolve positive status particles
+    if particle.status < 0:
+        logging.debug("Negative status. Skipping particle...")
+        return particle, [], []
+
+    # Far forward or backward rapidity particles can't be reasonably treated with our boost-invariance 2+1D medium.
+    if np.abs(particle.rap) > config.jet.RAP_MAX_EVOLVE:
+        logging.debug("Large rapidity. Skipping particle...")
+        return particle, [], []
+    if not particle.isg and not particle.isq and not particle.isEWB:
+        logging.debug("Untreated particle. Skipping particle...")
+        return particle, [], []
+
+    #########################
+    # Perform the evolution #
+    #########################
+    pT0 = particle.pT
+    emission_momenta, emission_coords, evolution_complete = parton_evolution.evolve_particle(particle, _medium, _nn)
+    pTF = particle.pT
+    logging.debug(f"Particle delta pT: {pTF - pT0} GeV")
+
+    return particle, emission_momenta, emission_coords
+
 num_jets = 0  # Counter for total jets analyzed
 try:
 
@@ -230,51 +303,49 @@ try:
         #################
         # Jet Evolution #
         #################
+        """
+        Process each particle in the jet in parallel, then process each emission in parallel, & so on.
+        
+        Only the direct descendents of a prompt hard particle are evolved -- thus we do not treat higher order in 
+        opacity radiation. They lose energy elastically and radiatively, but we drop the subsequently emitted particles.
+        """
         round_no = 0
         passed_particles = 0
         max_rad_gens = 1  # Maximum number of emissions from a single hard particle lineage
+
+        # Try to get max workers of Slurm environment variable, else use number of cores read by os.cpu
+        max_workers = int(os.environ.get("SLURM_CPUS_PER_TASK", os.cpu_count()))
+        seed_sequence = np.random.SeedSequence()
+        child_seeds = seed_sequence.spawn(max_workers)  # One per worker
         while True:  # Keep going until all particles are evolved
             """
             Perform the evolution on each particle
             """
             logging.info(f'Evolving particles, round {round_no}...')
-            for particle in hard_event.particles[passed_particles:]:  # Iterate over un-evolved particles in the event
-                logging.debug('Particle {}...'.format(particle.printout()))
-                passed_particles += 1
+            round_parts = hard_event.particles[passed_particles:]
+            with ProcessPoolExecutor(max_workers=max_workers,
+                                     initializer=_worker_init,
+                                     initargs=(hydro_filepath, child_seeds)) as executor:
 
-                #####################################
-                # Choose if we evolve this particle #
-                #####################################
-                # Only evolve positive status particles
-                if particle.status < 0:
-                    logging.debug("Negative status. Skipping particle...")
-                    continue
+                # Process particles in parallel
+                futures = {executor.submit(treat_particle, p): p for p in round_parts}
 
-                # Far forward or backward rapidity particles can't be reasonably treated with our boost-invariance 2+1D medium.
-                if np.abs(particle.rap) > config.jet.RAP_MAX_EVOLVE:
-                    logging.debug("Large rapidity. Skipping particle...")
-                    continue
-                if not particle.isg and not particle.isq and not particle.isEWB:
-                    logging.debug("Untreated particle. Skipping particle...")
-                    continue
+                # As they complete, spawn appropriate child particles
 
-                #########################
-                # Perform the evolution #
-                #########################
-                pT0 = particle.pT
-                emission_momenta, emission_coords, evolution_complete = parton_evolution.evolve_particle(particle, plasma_object)
-                pTF = particle.pT
-                logging.debug(f"Particle delta pT: {pTF - pT0} GeV")
+                for future in as_completed(futures):
+                    # Get result of this process
+                    modified_particle, emission_momenta, emission_coords = future.result()
 
+                    # Overwrite particle with modified particle
+                    hard_event.particles[modified_particle.tag] = modified_particle
 
-                # Create the emissions at the end of the event record
-                if round_no < max_rad_gens:  # Only create new particles for the first round of emissions
-                    if len(emission_momenta) > 0:
+                    # Spawn child particles
+                    if round_no < max_rad_gens:  # Only create new particles for the first round of emissions
                         for i in range(0, len(emission_momenta)):
-
-                            hard_event.spawn_radiation(particle.tag, emission_momenta[i], emission_coords[i])
+                            hard_event.spawn_radiation(modified_particle.tag, emission_momenta[i], emission_coords[i])
                     else:
                         pass
+            passed_particles += len(round_parts)
 
             logging.info(f'Evolution round {round_no} complete.')
             if passed_particles == len(hard_event.particles):

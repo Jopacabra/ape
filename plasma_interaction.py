@@ -414,7 +414,7 @@ def aniso_rad_delta(particle: hard_particles.Particle, medium: plasma.plasma_eve
 
 # Radiation distribution summoner
 def aniso_rad_dist(particle: hard_particles.Particle, medium: plasma.plasma_event,
-                   x_values: np.ndarray, kx_values: np.ndarray, ky_values: np.ndarray, dtau: float):
+                   x_values: np.ndarray, kx_values: np.ndarray, ky_values: np.ndarray, dtau: float, nn=None):
     # Gather particle and medium properties.
     if particle.isq:
         CR = 4/3
@@ -438,7 +438,7 @@ def aniso_rad_dist(particle: hard_particles.Particle, medium: plasma.plasma_even
     delta_pathlength = np.sqrt(delta_x ** 2 + delta_y ** 2 + delta_z ** 2)
 
     # Compute number distribution of radiation generated in this step
-    dtau_rad_dist = utilities.rad_emulator.compute_grid(
+    dtau_rad_dist = nn.compute_grid(
         E=particle.E0,  # Use E0 to avoid rescaling the meaning of x between steps
         z0=particle.tau,
         zf=particle.tau + delta_pathlength,

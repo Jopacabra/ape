@@ -93,8 +93,19 @@ def evolve_particle(particle : hard_particles.Particle, plasma_object : plasma.p
                         emission_coords = []
                         dtau_rad_dist = plasma_interaction.aniso_rad_dist(particle=particle, medium=plasma_object, dtau=dtau,
                                                                     kx_values=kx_values, ky_values=ky_values[int(k_points / 2)::],
-                                                                    x_values=x_values)
+                                                                    x_values=x_values, nn=nn)
 
+                        # Rotate to absolute coordinates
+                        """
+                        We start with a distribution in the "parton frame", where x is aligned with u_perp, z is aligned 
+                        with the hard particle momentum, and y = z (cross) x.
+                        
+                        We want to rotate this distribution to the lab frame, so we can sum multiple distributions from 
+                        different frames.
+                        """
+
+
+                        # Add rotated step distribution to the total distribution
                         rad_dist = rad_dist + dtau_rad_dist
                         dt = time.time() - t0
                         logging.debug(f"Radiation computed in {dt}s")
