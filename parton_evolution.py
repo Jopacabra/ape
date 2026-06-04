@@ -138,12 +138,14 @@ def evolve_particle(particle : hard_particles.Particle, plasma_object : plasma.p
                         rad_dist = ((total_integral - n*N_norm) / total_integral) * rad_dist
 
                         if n == 0:
-                            # No emission, so set radiation delta to zero
-                            rad_delta = hard_particles.ParticleDelta(dpx=0, dpy=0, dpz=0)
+                            # No emission, so set radiation momentum to zero
+                            total_k = np.array([0, 0, 0])
                         else:
-                            # Create particle delta opposite to the emitted particle, in the lab coordinate system
-                            total_k = np.sum(emission_momenta, axis=0)  # Sum only those from this step
-                            rad_delta = hard_particles.ParticleDelta(dpx=total_k[0], dpy=total_k[1], dpz=total_k[2])
+                            # Sum emission momenta from this step
+                            total_k = np.sum(emission_momenta, axis=0)
+
+                        # Create particle delta opposite to the emitted particle momentum, in the lab coordinate system
+                        rad_delta = hard_particles.ParticleDelta(dpx=-total_k[0], dpy=-total_k[1], dpz=-total_k[2])
 
 
                     elif config.jet.RAD_MODEL == "iso_analytic":
