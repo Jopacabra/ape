@@ -225,6 +225,7 @@ def _worker_init(hydro_filepath, child_seeds, worker_counter, worker_counter_loc
             normalization_file=os.path.join(flow_rad_nn_dir, "data/radiation_normalization.json"),
             device='cpu',
             compile=False,
+            quiet=True,
         )
 
         logging.debug("Network loaded.")
@@ -262,7 +263,7 @@ def treat_particle(particle):
     pT0 = particle.pT
     emission_momenta, emission_coords, evolution_complete = parton_evolution.evolve_particle(particle, _medium, _nn)
     pTF = particle.pT
-    logging.debug(f"Particle delta pT: {pTF - pT0} GeV")
+    logging.debug(f"pT0: {pT0}, delta pT: {pTF - pT0} GeV")
 
     return particle, emission_momenta, emission_coords
 
@@ -294,8 +295,8 @@ try:
         else:
             logging.debug('Using central hard scattering point...')
             tau_0 = config.jet.TAU_PROD
-            x_0 = 1
-            y_0 = 1
+            x_0 = 0
+            y_0 = 0
             etas_0 = 0.0
 
         logging.info(f"Embedding hard scattering at ({tau_0}, {x_0}, {y_0}, {etas_0})")
