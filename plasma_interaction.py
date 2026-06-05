@@ -438,10 +438,11 @@ def aniso_rad_dist(particle: hard_particles.Particle, medium: plasma.plasma_even
     delta_pathlength = np.sqrt(delta_x ** 2 + delta_y ** 2 + delta_z ** 2)
 
     # Compute number distribution of radiation generated in this step
+    hbar = 0.1973269804  # GeV * fm
     dtau_rad_dist = nn.compute_grid(
         E=particle.E0,  # Use E0 to avoid rescaling the meaning of x between steps
-        z0=particle.tau,
-        zf=particle.tau + delta_pathlength,
+        z0=particle.tau / hbar,  # tau is in fm, need to give to NN in GeV^{-1}
+        zf=(particle.tau + delta_pathlength) / hbar,  # tau & dtau are in fm, need to give to NN in GeV^{-1}
         u_perp=np.linalg.norm(uperp),
         T=temp,
         g=config.constants.G,
