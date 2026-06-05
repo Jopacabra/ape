@@ -8,6 +8,7 @@ from pathlib import Path
 import tempfile
 import inspect
 from concurrent.futures import ProcessPoolExecutor, as_completed
+import multiprocessing
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -190,16 +191,24 @@ _nn = None
 hydro_filepath = event_type
 
 # Particle evolution worker initializer
-def _worker_init(hydro_filepath, child_seeds):
+def _worker_init(hydro_filepath, child_seeds, worker_counter, worker_counter_lock):
     global _medium, _rng, _nn
+
+    # Assign a guaranteed-unique worker index using a shared atomic counter
+    with worker_counter_lock:
+        worker_id = worker_counter.value
+        worker_counter.value += 1
 
     # Reconstruct medium -- does not include the medium metadata, which is unneeded for the evolution.
     plasma_file = plasma.osu_hydro_file(hydro_filepath)
     _medium = plasma.plasma_event(hydro_object=plasma_file)
 
     # Get an RNG for this worker
-    worker_id = os.getpid() % len(child_seeds)
-    _rng = np.random.default_rng(child_seeds[worker_id])
+    # worker_id = os.getpid() % len(child_seeds)
+    _rng = np.random.default_rng(child_seeds[worker_id % len(child_seeds)])
+
+    # Set a specific cache directory for this worker
+    os.environ["TORCHINDUCTOR_CACHE_DIR"] = f"/tmp/torchinductor_worker_{worker_id}"
 
     # Load neural network, if in aniso_NN mode.
     if config.jet.RAD_MODEL == "aniso_NN":
@@ -215,7 +224,9 @@ def _worker_init(hydro_filepath, child_seeds):
             model_file=os.path.join(flow_rad_nn_dir, "data/radiation_emulator.pt"),
             normalization_file=os.path.join(flow_rad_nn_dir, "data/radiation_normalization.json"),
             device='cpu',
+            compile=False,
         )
+
         logging.debug("Network loaded.")
     else:
         _nn = None
@@ -317,6 +328,11 @@ try:
         max_workers = int(os.environ.get("SLURM_CPUS_PER_TASK", os.cpu_count()))
         seed_sequence = np.random.SeedSequence()
         child_seeds = seed_sequence.spawn(max_workers)  # One per worker
+
+        # Create a shared atomic counter so each worker gets a guaranteed-unique index
+        worker_counter = multiprocessing.Value('i', 0)
+        worker_counter_lock = multiprocessing.Lock()
+
         while True:  # Keep going until all particles are evolved
             """
             Perform the evolution on each particle
@@ -325,7 +341,8 @@ try:
             round_parts = hard_event.particles[passed_particles:]
             with ProcessPoolExecutor(max_workers=max_workers,
                                      initializer=_worker_init,
-                                     initargs=(hydro_filepath, child_seeds)) as executor:
+                                     initargs=(hydro_filepath, child_seeds, worker_counter,
+                                               worker_counter_lock)) as executor:
 
                 # Process particles in parallel
                 futures = {executor.submit(treat_particle, p): p for p in round_parts}
