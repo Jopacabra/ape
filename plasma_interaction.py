@@ -7,8 +7,9 @@ import logging
 import os
 import sys
 from pathlib import Path
+from scipy.ndimage import map_coordinates
 
-from utilities import zeta
+from utilities import zeta, perp_vec
 
 # Get the path of this file and import the radiation NN path
 script_dir = str(Path(__file__).resolve().parent)
@@ -401,7 +402,7 @@ def aniso_rad_delta(particle: hard_particles.Particle, medium: plasma.plasma_eve
     dpz = 0
 
     # Align momentum transfer to coordinate system
-    lf_momentum = utilities.lf_emission_momentum(k=k, particle=particle, medium=medium)
+    lf_momentum = lf_emission_momentum(k=k, particle=particle, medium=medium)
     dp = (-1) * lf_momentum
 
     dpx += float(dp[0])
@@ -414,7 +415,17 @@ def aniso_rad_delta(particle: hard_particles.Particle, medium: plasma.plasma_eve
 
 # Radiation distribution summoner
 def aniso_rad_dist(particle: hard_particles.Particle, medium: plasma.plasma_event,
-                   x_values: np.ndarray, kx_values: np.ndarray, ky_values: np.ndarray, dtau: float, nn=None):
+                   kz_values: np.ndarray, kx_values: np.ndarray, ky_values: np.ndarray, dtau: float, nn=None):
+    """
+    Function that generates a 3D numpy array of the number distribution of emitted gluons over the current step in the
+    medium. ky_values should be an even number of points symmetric about 0 so we can mirror points along this axis.
+
+    Returns in the parton frame organized (kx, ky, kz)
+    """
+    assert len(ky_values) % 2 == 0  # Array has an even number of entries
+    # assert np.array_equal(ky_values, -ky_values[::-1])  # Array is symmetric about 0
+    hbar = 0.1973269804  # GeV * fm
+
     # Gather particle and medium properties.
     if particle.isq:
         CR = 4/3
@@ -437,20 +448,148 @@ def aniso_rad_dist(particle: hard_particles.Particle, medium: plasma.plasma_even
     delta_t, delta_x, delta_y, delta_z = particle.next_pathlength(dtau, cart=True)
     delta_pathlength = np.sqrt(delta_x ** 2 + delta_y ** 2 + delta_z ** 2)
 
+    # Warn if we're outside our training domain
+    # if particle.tau + delta_pathlength / hbar > np.amax(nn.X[5]):
+    #     logging.warning("Particle pathlength is outside of training domain! Good luck!")
+    # if temp > np.amax(nn.X[7]) or temp < np.amin(nn.X[7]):
+    #     logging.warning("Temperature is outside of training domain! Good luck!")
+    # if np.linalg.norm(uperp) > np.amax(nn.X[6]) or np.linalg.norm(uperp) < np.amin(nn.X[6]):
+    #     logging.warning("Perp. velocity is outside of training domain! Good luck!")
+    if particle.tau + delta_pathlength / hbar > 50.0:
+        logging.warning("Particle pathlength is outside of training domain! Good luck!")
+    if temp > 0.650 or temp < 0.150:
+        logging.warning("Temperature is outside of training domain! Good luck!")
+    if np.linalg.norm(uperp) > 0.9 or np.linalg.norm(uperp) < 0.0:
+        logging.warning("Perp. velocity is outside of training domain! Good luck!")
+
     # Compute number distribution of radiation generated in this step
-    hbar = 0.1973269804  # GeV * fm
-    dtau_rad_dist = nn.compute_grid(
+    dtau_rad_dist = nn.compute_dNd3k_grid(
         E=particle.E0,  # Use E0 to avoid rescaling the meaning of x between steps
         z0=particle.tau / hbar,  # tau is in fm, need to give to NN in GeV^{-1}
         zf=(particle.tau + delta_pathlength) / hbar,  # tau & dtau are in fm, need to give to NN in GeV^{-1}
         u_perp=np.linalg.norm(uperp),
         T=temp,
         g=config.constants.G,
-        x_values=x_values,
         kx_values=kx_values,
-        ky_values=ky_values)
+        ky_values=ky_values[len(ky_values) // 2 ::],  # Compute only for positive ky values
+        kz_values=kz_values[len(kz_values) // 2 ::]  )  # Compute only for positive kz values
 
     # Mirror across ky -- Flip array, then concat along that axis.
-    dtau_rad_dist = np.concat((np.flip(dtau_rad_dist, axis=2), dtau_rad_dist), axis=2)
+    dtau_rad_dist = np.concat((np.flip(dtau_rad_dist, axis=1), dtau_rad_dist), axis=1)
+
+    # Fill zeroes for negative kz values and concat along that axis
+    dtau_rad_dist = np.concat((np.zeros_like(dtau_rad_dist), dtau_rad_dist), axis=2)
 
     return CR * dtau_rad_dist
+
+
+def lf_emission_momentum(k: np.ndarray, particle, medium: plasma.plasma_event):
+    """
+    Function to transform the 3-momentum of an emission from the jet frame to the lab frame
+    """
+
+    # Gather particle and medium properties.
+    p = particle.p3
+    point = particle.coords
+    u = np.array([float(medium.x_vel(point)[0]), float(medium.y_vel(point)[0]), float(medium.z_vel(point))])
+    uperp = perp_vec(a=u, b=p)
+
+    # By construction, the gluon kinematics correspond to:
+    k_z_hat = p / np.linalg.norm(p)  # Direction of k_z is parallel to the hard particle
+    k_x_hat = uperp / np.linalg.norm(uperp)  # Direction of k_x is parallel to the transverse flow
+    k_y_hat = np.cross(k_z_hat, k_x_hat)  # Direction of k_y is perp to both of the above, k_x x k_y = k_z, permute to k_z x k_x = k_y
+
+    # Return transformed momentum 3-vector
+    return np.array(k[0]*k_x_hat + k[1]*k_y_hat + k[2]*k_z_hat)
+
+
+def rotate_rad_dist(particle: hard_particles.Particle, medium: plasma.plasma_event, rad_dist: np.ndarray,
+                    kx_values: np.ndarray, ky_values: np.ndarray, kz_values: np.ndarray):
+    """
+    Function that rotates a radiation distribution in kx, ky, kz in the parton frame into the lab frame.
+
+    """
+    # Find axes
+    # Gather particle and medium properties.
+    p = particle.p3
+    point = particle.coords
+    u = np.array([float(medium.x_vel(point)[0]), float(medium.y_vel(point)[0]), float(medium.z_vel(point))])
+    uperp = perp_vec(a=u, b=p)
+
+    # By construction, the gluon kinematics correspond to:
+    k_z_hat = p / np.linalg.norm(p)  # Direction of k_z is parallel to the hard particle
+    k_x_hat = uperp / np.linalg.norm(uperp)  # Direction of k_x is parallel to the transverse flow
+    k_y_hat = np.cross(k_z_hat, k_x_hat)  # Direction of k_y is perp to both of the above, k_x x k_y = k_z, permute to k_z x k_x = k_y
+
+    # # Transpose rad_dist from (kz, kx, ky) -> (kx, ky, kz)
+    # dist_kxkykz = rad_dist.transpose(1, 2, 0)  # Shape: (m, m, n)
+    dist_kxkykz = rad_dist  # Should already be in (kx, ky, kz), shape (m, m, n)
+
+    # Compute the input integral (np.trapezoid handles integration of arbitrary spacing via coordinates)
+    integral_before = np.trapezoid(
+        np.trapezoid(
+            np.trapezoid(dist_kxkykz, kz_values, axis=2),
+            ky_values, axis=1),
+        kx_values, axis=0)
+
+    # Build rotation matrix R: columns are k_x_hat, k_y_hat, k_z_hat in (x,y,z) space.
+    # R transforms a (kx, ky, kz) vector to (x, y, z): v_xyz = R @ v_k
+    # R^T (= R^-1 for orthonormal R) transforms (x, y, z) back to (kx, ky, kz): v_k = R^T @ v_xyz
+    R = np.column_stack([k_x_hat, k_y_hat, k_z_hat])  # Shape: (3, 3)
+
+    # Build a meshgrid of output (x, y, z) coordinates using the same grid ranges as the input
+    x_values = kx_values
+    y_values = ky_values
+    z_values = kz_values
+
+    # Build output grid in (x, y, z) and find corresponding (kx, ky, kz) source coordinates via R^T
+    xg, yg, zg = np.meshgrid(x_values, y_values, z_values, indexing='ij')  # Each shape: (m, m, n)
+    xyz = np.stack([xg.ravel(), yg.ravel(), zg.ravel()], axis=0)  # Shape: (3, m*m*n)
+
+    # Apply inverse rotation to map output (x,y,z) grid back to source (kx,ky,kz) coordinates
+    k_coords = R.T @ xyz  # Shape: (3, m*m*n); rows are kx, ky, kz source coords
+
+    # Convert source (kx, ky, kz) coordinates to fractional array indices in dist_kxkykz
+    # Interpolates between coordinates to allow for any grid spacing in any axis (log, linear, etc.)
+    # Convert source (kx, ky, kz) coordinates to fractional array indices in dist_kxkykz
+    # Use searchsorted-based linear mapping instead of np.interp to allow out-of-bounds indices
+    # (np.interp clamps to edge values, preventing map_coordinates from correctly zeroing them)
+    def coords_to_index(coords, grid):
+        """Linearly map coordinate values to fractional array indices, allowing out-of-bounds."""
+        # For uniform or non-uniform grids: find fractional index by linear interpolation of the inverse map
+        indices = np.interp(coords, grid, np.arange(len(grid)),
+                            left=-(len(grid)), right=2 * len(grid))  # force OOB indices far outside
+        return indices
+
+    idx_kx = coords_to_index(k_coords[0], kx_values)
+    idx_ky = coords_to_index(k_coords[1], ky_values)
+    idx_kz = coords_to_index(k_coords[2], kz_values)
+
+    # idx_kx = np.interp(k_coords[0], kx_values, np.arange(len(kx_values)))
+    # idx_ky = np.interp(k_coords[1], ky_values, np.arange(len(ky_values)))
+    # idx_kz = np.interp(k_coords[2], kz_values, np.arange(len(kz_values)))
+
+    # Apply rotation
+    # Interpolate dist_kxkykz at the source fractional indices; points outside bounds are set to 0
+    # Use scipy.ndimage.map_coordinates to perform the interpolation of points into the new axes.
+    rotated_flat = map_coordinates(dist_kxkykz, [idx_kx, idx_ky, idx_kz], order=1, mode='constant', cval=0.0)
+    rotated_rad_dist = rotated_flat.reshape(len(x_values), len(y_values), len(z_values))  # Shape: (m, m, n)
+
+    # Rescale to conserve the numerical integral.
+    # Any signal whose rotated source coordinates fell outside the input grid was set to 0 by
+    # map_coordinates. We compensate by rescaling the captured shape to match the original integral.
+    # (np.trapezoid handles integration of arbitrary spacing via coordinates)
+    integral_after = np.trapezoid(
+        np.trapezoid(
+            np.trapezoid(rotated_rad_dist, z_values, axis=2),
+            y_values, axis=1),
+        x_values, axis=0)
+
+    if integral_after != 0.0:
+        rotated_rad_dist *= integral_before / integral_after
+
+    change = (integral_after - integral_before) / integral_before
+    if change > 0.1:
+        logging.warning(f"Radiation distribution rotation change: {change*100}%")
+
+    return rotated_rad_dist
