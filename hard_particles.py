@@ -1,6 +1,7 @@
 from dataclasses import dataclass, field
 import copy
 from typing import Any, Iterable, Iterator, Optional, Sequence, TypeVar, Generic
+import math
 import logging
 
 import numpy as np
@@ -235,11 +236,29 @@ class Particle:
     def rap(self) -> float:
         # momentum rapidity y = 1/2 ln((E+pz)/(E-pz))
         E = self.E
-        denom = E - self.pz
-        if denom <= 0.0:
-            # protect against numerical issues at extreme boosts
-            denom = np.finfo(float).tiny
-        return float(0.5 * np.log((E + self.pz) / denom))
+        pz = self.pz
+        numer = E + pz
+        denom = E - pz
+
+        finfo = np.finfo(float)
+
+        with np.errstate(over='ignore'):  # Intentionally getting overflow values
+            # --- lower bound: division would overflow (y -> +inf) ---
+            lower_threshold = np.abs(numer) / finfo.max
+            overflow_case = np.abs(denom) <= np.maximum(lower_threshold, finfo.tiny)
+
+            # --- upper bound: division would underflow to 0 (y -> -inf) ---
+            upper_threshold = np.abs(numer) * finfo.max  # denom >> numer
+            underflow_case = np.abs(denom) >= np.minimum(upper_threshold, finfo.max)
+
+        if numer == 0.0:
+            return np.nan  # This case covers the "event as a whole" particle.
+        if overflow_case:
+            return math.copysign(np.inf, pz)  # Beam particles
+        elif underflow_case:
+            return np.nan  # This case is not physically meaningful
+        else:
+            return 0.5 * np.log(numer / denom)
 
     def pathlength_since(self, tau_0) -> float:
         """
