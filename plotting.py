@@ -5,6 +5,18 @@ from matplotlib import pyplot as plt
 
 import hard_particles
 
+id_color_dict = {21: "yellowgreen",
+                 22: "m",
+                 23: "orchid",
+                 24: "fuchsia",
+                 1: "black",
+                 2: "black",
+                 3: "black",
+                 -1: "dimgrey",
+                 -2: "dimgrey",
+                 -3: "dimgrey",
+                 2212: "crimson",
+                 2112: "grey"}
 
 def plot_trajectories(hard_event : hard_particles.EventRecord, *, z_axis: str = "etas", color_by: str | None = "id", rap_max=1.0) -> None:
     """
@@ -49,7 +61,15 @@ def plot_trajectories(hard_event : hard_particles.EventRecord, *, z_axis: str = 
             ids = np.append(ids, p.id)
         uniq_ids = np.unique(ids)
         cmap = plt.get_cmap("tab20", max(len(uniq_ids), 1))
-        id_to_color = {pid: cmap(i) for i, pid in enumerate(uniq_ids)}
+        id_to_color = {}
+        j = 0  # Start random colors after set colors
+        for i, pid in enumerate(uniq_ids):
+            # Use set color
+            try:
+                id_to_color[pid] = id_color_dict[int(pid)]
+            except:
+                id_to_color[pid] = cmap(j)
+                j += 1
     else:
         id_to_color = {}
 
@@ -157,7 +177,18 @@ def plot_parton_hadron(hard_event : hard_particles.EventRecord, hadrons : pythia
             ids = np.append(ids, p.id)
         uniq_ids = np.unique(ids)
         cmap = plt.get_cmap("tab20", max(len(uniq_ids), 1))
-        id_to_color = {pid: cmap(i) for i, pid in enumerate(uniq_ids)}
+
+        id_to_color = {}
+        j = 0  # Start random colors after set colors
+        for i, pid in enumerate(uniq_ids):
+            # Use set color
+            try:
+                id_to_color[pid] = id_color_dict[int(pid)]
+            except:
+                id_to_color[pid] = cmap(j)
+                j += 1
+
+
 
         # Iterate over particles and find rmax
         rmax = 0
