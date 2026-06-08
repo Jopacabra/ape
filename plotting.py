@@ -52,36 +52,34 @@ def plot_trajectories(hard_event : hard_particles.EventRecord, *, z_axis: str = 
     # Fix aspect ratio.
     ax.set_aspect("equal")
 
-    # Optional categorical coloring by particle id
-    if color_by == "id":
-        ids = np.array([])
-        for p in hard_event.particles:
-            if rap_max is not None and np.abs(p.rap) > rap_max:
-                continue
-            ids = np.append(ids, p.id)
-        uniq_ids = np.unique(ids)
-        cmap = plt.get_cmap("tab20", max(len(uniq_ids), 1))
-        id_to_color = {}
-        j = 0  # Start random colors after set colors
-        for i, pid in enumerate(uniq_ids):
-            # Use set color
-            try:
-                id_to_color[pid] = id_color_dict[int(pid)]
-            except:
-                id_to_color[pid] = cmap(j)
-                j += 1
-    else:
-        id_to_color = {}
-
-    any_plotted = False
-
-    for idx, p in enumerate(hard_event.particles):
-        hist = getattr(p, "history", None)
-        if not hist:
-            continue
-
+    # Get colormap of appropriate size
+    ids = np.array([])
+    for p in hard_event.particles:
         if rap_max is not None and np.abs(p.rap) > rap_max:
             continue
+        ids = np.append(ids, p.id)
+    uniq_ids = np.unique(ids)
+    cmap = plt.get_cmap("tab20", max(len(uniq_ids), 1))
+
+    any_plotted = False
+    id_to_color = {}
+    j = 0
+    for idx, p in enumerate(hard_event.particles):
+        hist = getattr(p, "history", None)
+        if p.status < 0:
+            continue
+        if not hist:
+            continue
+        if rap_max is not None and np.abs(p.rap) > rap_max:
+            continue
+
+        # Get color
+        pid = p.id
+        try:
+            id_to_color[pid] = id_color_dict[int(pid)]
+        except:
+            id_to_color[pid] = cmap(j)
+            j += 1
 
         traj = np.asarray(hist, dtype=float)
         if traj.ndim != 2 or traj.shape[1] < 4:
@@ -104,7 +102,10 @@ def plot_trajectories(hard_event : hard_particles.EventRecord, *, z_axis: str = 
             z_label = None
 
         pid = getattr(p, "id", None)
-        color = id_to_color.get(pid, None)
+        if color_by == "id":
+            color = id_to_color.get(pid, None)
+        else:
+            color = None
 
         if z is None:
             ax.plot(x, y, lw=1.5, alpha=0.9, color=color)
@@ -178,18 +179,6 @@ def plot_parton_hadron(hard_event : hard_particles.EventRecord, hadrons : pythia
         uniq_ids = np.unique(ids)
         cmap = plt.get_cmap("tab20", max(len(uniq_ids), 1))
 
-        id_to_color = {}
-        j = 0  # Start random colors after set colors
-        for i, pid in enumerate(uniq_ids):
-            # Use set color
-            try:
-                id_to_color[pid] = id_color_dict[int(pid)]
-            except:
-                id_to_color[pid] = cmap(j)
-                j += 1
-
-
-
         # Iterate over particles and find rmax
         rmax = 0
         any_plotted = False
@@ -210,13 +199,24 @@ def plot_parton_hadron(hard_event : hard_particles.EventRecord, hadrons : pythia
             rmax = max(rmax, np.max(np.hypot(x, y)))
 
         # Iterate over particles and plot
+        id_to_color = {}
+        j = 0
         for idx, p in enumerate(hard_event.particles):
             hist = getattr(p, "history", None)
+            if p.status < 0:
+                continue
             if not hist:
                 continue
-
             if rap_max is not None and np.abs(p.rap) > rap_max:
                 continue
+
+            # Get color
+            pid = p.id
+            try:
+                id_to_color[pid] = id_color_dict[int(pid)]
+            except:
+                id_to_color[pid] = cmap(j)
+                j += 1
 
             traj = np.asarray(hist, dtype=float)
             if traj.ndim != 2 or traj.shape[1] < 4:
