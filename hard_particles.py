@@ -407,6 +407,10 @@ class Particle:
         return np.array([self.px, self.py, self.pz])
 
     @property
+    def p30(self):
+        return np.array([self.px_0, self.py_0, self.pz_0])
+
+    @property
     def coords(self):
         """Conveniently returns the current coordinates for calling a plasma.plasma_event object's properties"""
         return np.array([self.tau, self.x, self.y, self.etas])
