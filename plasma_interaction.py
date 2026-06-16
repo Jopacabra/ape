@@ -274,7 +274,7 @@ def coll_energy_loss_integrand(T, tau, E, hard_pid=21):
 
 
 # Collisional interaction momentum transfer public API
-def collisional_delta(particle: hard_particles.Particle, medium: plasma.plasma_event, dtau: float) -> hard_particles.ParticleDelta:
+def collisional_delta(particle: hard_particles.Particle, medium: plasma.plasma, dtau: float) -> hard_particles.ParticleDelta:
     # Start counters
     dpx = 0
     dpy = 0
@@ -317,7 +317,7 @@ def collisional_delta(particle: hard_particles.Particle, medium: plasma.plasma_e
 
 
 # Collisional interaction momentum transfer public API using density gradient
-def collisional_delta_linear_gradients(particle: hard_particles.Particle, medium: plasma.plasma_event, dtau: float) -> hard_particles.ParticleDelta:
+def collisional_delta_linear_gradients(particle: hard_particles.Particle, medium: plasma.plasma, dtau: float) -> hard_particles.ParticleDelta:
     # Start counters
     dpx = 0
     dpy = 0
@@ -365,7 +365,7 @@ def collisional_delta_linear_gradients(particle: hard_particles.Particle, medium
 
 
 # Radiative interaction momentum transfer public API
-def rad_delta(particle: hard_particles.Particle, medium: plasma.plasma_event, dtau: float) -> hard_particles.ParticleDelta:
+def rad_delta(particle: hard_particles.Particle, medium: plasma.plasma, dtau: float) -> hard_particles.ParticleDelta:
     # Start counters
     dpx = 0
     dpy = 0
@@ -403,7 +403,7 @@ def rad_delta(particle: hard_particles.Particle, medium: plasma.plasma_event, dt
 
 
 # Radiative interaction momentum transfer public using anisotropic model NN API
-def aniso_rad_delta(particle: hard_particles.Particle, medium: plasma.plasma_event, k: np.ndarray) -> hard_particles.ParticleDelta:
+def aniso_rad_delta(particle: hard_particles.Particle, medium: plasma.plasma, k: np.ndarray) -> hard_particles.ParticleDelta:
     # Start counters
     dpx = 0
     dpy = 0
@@ -422,7 +422,7 @@ def aniso_rad_delta(particle: hard_particles.Particle, medium: plasma.plasma_eve
 
 
 # Radiation distribution summoner
-def aniso_rad_dist(particle: hard_particles.Particle, medium: plasma.plasma_event,
+def aniso_rad_dist(particle: hard_particles.Particle, medium: plasma.plasma,
                    kz_values: np.ndarray, kx_values: np.ndarray, ky_values: np.ndarray, dtau: float, nn=None):
     """
     Function that generates a 3D numpy array of the number distribution of emitted gluons over the current step in the
@@ -491,7 +491,7 @@ def aniso_rad_dist(particle: hard_particles.Particle, medium: plasma.plasma_even
     return CR * dtau_rad_dist
 
 
-def lf_emission_momentum(k: np.ndarray, particle, medium: plasma.plasma_event):
+def lf_emission_momentum(k: np.ndarray, particle, medium: plasma.plasma):
     """
     Function to transform the 3-momentum of an emission from the jet frame to the lab frame
     """
@@ -511,7 +511,7 @@ def lf_emission_momentum(k: np.ndarray, particle, medium: plasma.plasma_event):
     return np.array(k[0]*k_x_hat + k[1]*k_y_hat + k[2]*k_z_hat)
 
 
-def rotate_rad_dist(particle: hard_particles.Particle, medium: plasma.plasma_event, rad_dist: np.ndarray,
+def rotate_rad_dist(particle: hard_particles.Particle, medium: plasma.plasma, rad_dist: np.ndarray,
                     kx_values: np.ndarray, ky_values: np.ndarray, kz_values: np.ndarray):
     """
     Function that rotates a radiation distribution in kx, ky, kz in the parton frame into the lab frame.
@@ -603,7 +603,7 @@ def rotate_rad_dist(particle: hard_particles.Particle, medium: plasma.plasma_eve
     return rotated_rad_dist
 
 
-def E_gluons(particle: hard_particles.Particle, medium: plasma.plasma_event, dtau: float):
+def E_gluons(particle: hard_particles.Particle, medium: plasma.plasma, dtau: float):
     """
     This function returns the analytically computed energy of emitted gluons at first order in opacity with infinite
     kinematic bounds, as in https://arxiv.org/pdf/nucl-th/0012092 Eq. 9
@@ -641,7 +641,7 @@ def E_gluons(particle: hard_particles.Particle, medium: plasma.plasma_event, dta
             * L * np.log(E / mu))
 
 
-def N_gluons(particle: hard_particles.Particle, medium: plasma.plasma_event, dtau: float):
+def N_gluons(particle: hard_particles.Particle, medium: plasma.plasma, dtau: float):
     """
     This function returns the analytically computed number of emitted gluons at first order in opacity with infinite
     kinematic bounds, as in https://arxiv.org/pdf/nucl-th/0012092 Eq. 7
@@ -686,7 +686,7 @@ def N_gluons(particle: hard_particles.Particle, medium: plasma.plasma_event, dta
     return ((CR * ALPHAS/np.pi) * intdz * inv_lambda(T=temp, hard_pid=particle.id)
             * np.log(L * (mu ** 2) / (2 * E * xmin))**2)
 
-def N_gluons_fk(particle: hard_particles.Particle, medium: plasma.plasma_event, dtau: float):
+def N_gluons_fk(particle: hard_particles.Particle, medium: plasma.plasma, dtau: float):
     """
     This function numerically integrates the distribution of emitted gluons at first order in opacity with finite
     kinematic bounds, as in https://arxiv.org/pdf/nucl-th/0012092 Eq. 5

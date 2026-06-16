@@ -675,7 +675,7 @@ def generate_event(grid_max_target=config.soft_transport.all.GRID_MAX, grid_step
 
     # Create event object
     # This asks the hydro file object to interpolate the relevant functions and pass them on to the plasma object.
-    event = plasma.plasma_event(hydro_file_path=plasmaFilePath, meta=results)
+    event = plasma.plasma(hydro_file_path=plasmaFilePath, meta=results)
 
     # Go home & announce
     os.chdir(og_dir)
@@ -713,7 +713,7 @@ def temp_6th_sample(event, maxAttempts=5, time='i', batch=1000, seed=None):
         pointArray = utilities.cube_random(num = batch, boxSize=gridWidth, maxProb=maxTemp ** 6, seed=seed)
 
         for point in pointArray:
-            targetTemp = temp_func(np.array([time, point[0], point[1]]))**6
+            targetTemp = temp_func(np.array([time, point[0], point[1], 0]))**6
 
             # Check if point under 2D temp PDF curve
             if float(point[2]) < float(targetTemp[0]):

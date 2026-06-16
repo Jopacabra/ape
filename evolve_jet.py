@@ -172,7 +172,7 @@ else:
             logging.error("No metadata found for this event.")
             soft_dict = {}
 
-        plasma_object = plasma.plasma_event(hydro_file_path=event_type)
+        plasma_object = plasma.plasma(hydro_file_path=event_type)
     except:
         logging.error("Invalid event type or path.")
         raise ValueError("Invalid event type.")

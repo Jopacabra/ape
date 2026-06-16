@@ -5,8 +5,21 @@ plasma_event stores raw hydro grid arrays and interpolates on the fly,
 making it fully pickle-able (no lambdas / closures / interpolator objects
 stored as attributes).
 
-Public API:
-  Fields (callable with pts of shape (...,4) = [tau, x, y, eta_s]):
+Supports two modes, selected at construction time via boost_invariant=:
+
+  boost_invariant=True  (default)
+    2+1D hydro output on a (tau, x, y) grid.
+    eta_s is accepted in all call signatures but dropped internally.
+    Boost-invariant kinematics are applied analytically:
+        vz = tanh(eta_s),   grad_z_u_z = 1/(tau*cosh(eta_s))
+
+  boost_invariant=False
+    3+1D hydro output on a (tau, x, y, eta_s) grid.
+    All four coordinates are used for interpolation.
+    vz and all eta_s-gradient components are read directly from data.
+
+Public API (identical for both modes):
+  Field methods (pts shape (..., 4) = [tau, x, y, eta_s]):
     temp, x_vel, y_vel, z_vel,
     temp_grad_x, temp_grad_y, temp_grad_z,
     grad_x_u_x, grad_x_u_y, grad_x_u_z,
@@ -16,6 +29,7 @@ Public API:
 
   Domain metadata:
     t0, tf, timestep, xmin, xmax, ymin, ymax, gridstep
+    etasmin, etasmax  (3+1D only; set to 0.0/0.0 in 2+1D mode)
 
   Methods:
     tspace(resolution), xspace(resolution, fraction),
@@ -39,7 +53,6 @@ try:
 except ImportError:
     print('NO MATPLOTLIB')
 
-# class osu_hydro_file():
 
 # ---------------------------------------------------------------------------
 # Internal helpers
@@ -47,7 +60,7 @@ except ImportError:
 
 def _read_osu_hydro(file_path: str, temp_conv_factor: float = 0.1973269788):
     """
-    Read an osu-hydro output file and return the raw grid arrays.
+    Read an osu-hydro (2+1D) output file and return the raw grid arrays.
 
     Returns
     -------
@@ -88,25 +101,45 @@ def _read_osu_hydro(file_path: str, temp_conv_factor: float = 0.1973269788):
     return tspace, xspace, temp, ux, uy
 
 
-def _interp(arr3d: np.ndarray, tspace: np.ndarray, xspace: np.ndarray,
-            pts: np.ndarray) -> np.ndarray:
-    """
-    Build a temporary RegularGridInterpolator for *arr3d* and evaluate at *pts*.
+def _make_interp_3d(arr3d, tspace, xspace):
+    """Build a 3D RegularGridInterpolator on (tau, x, y)."""
+    return RegularGridInterpolator(
+        (tspace, xspace, xspace), arr3d, bounds_error=False, fill_value=None
+    )
 
-    *pts* may have shape (..., 3) [tau, x, y] or (..., 4) [tau, x, y, eta_s].
-    eta_s is silently dropped (boost-invariant approximation).
+
+def _make_interp_4d(arr4d, tspace, xspace, etas_space):
+    """Build a 4D RegularGridInterpolator on (tau, x, y, eta_s)."""
+    return RegularGridInterpolator(
+        (tspace, xspace, xspace, etas_space), arr4d, bounds_error=False, fill_value=None
+    )
+
+
+def _eval_3d(arr3d: np.ndarray, tspace: np.ndarray, xspace: np.ndarray,
+             pts: np.ndarray) -> np.ndarray:
     """
-    p = np.asarray(pts)
+    Interpolate a (NT, NX, NY) array at pts of shape (..., 3 or 4).
+    eta_s (column 3) is silently dropped.
+    """
+    p = np.asarray(pts, dtype=float)
     if p.shape[-1] == 4:
         p = p[..., :3]
     elif p.shape[-1] != 3:
+        raise ValueError(f"Expected last dim 3 or 4, got shape {pts.shape}")
+    return _make_interp_3d(arr3d, tspace, xspace)(p)
+
+
+def _eval_4d(arr4d: np.ndarray, tspace: np.ndarray, xspace: np.ndarray,
+             etas_space: np.ndarray, pts: np.ndarray) -> np.ndarray:
+    """
+    Interpolate a (NT, NX, NY, NETA) array at pts of shape (..., 4).
+    """
+    p = np.asarray(pts, dtype=float)
+    if p.shape[-1] != 4:
         raise ValueError(
-            f"Expected points with last dim 3 or 4, got shape {pts.shape}"
+            f"3+1D plasma requires points with last dim 4 [tau,x,y,eta_s], got {pts.shape}"
         )
-    interp = RegularGridInterpolator(
-        (tspace, xspace, xspace), arr3d, bounds_error=False, fill_value=None
-    )
-    return interp(p)
+    return _make_interp_4d(arr4d, tspace, xspace, etas_space)(p)
 
 
 # ---------------------------------------------------------------------------
@@ -114,10 +147,12 @@ def _interp(arr3d: np.ndarray, tspace: np.ndarray, xspace: np.ndarray,
 # ---------------------------------------------------------------------------
 
 @dataclass(slots=True)
-class plasma_event:
+class plasma:
     """
-    Medium fields in Milne coordinates (tau, x, y, eta_s) assuming
-    longitudinal boost invariance (2+1D hydro).
+    Medium fields in Milne coordinates (tau, x, y, eta_s).
+
+    Set boost_invariant=True  for 2+1D hydro (osu-hydro style).
+    Set boost_invariant=False for 3+1D hydro (full eta_s dependence).
 
     All field methods accept points of shape (..., 4) = [tau, x, y, eta_s].
 
@@ -126,15 +161,22 @@ class plasma_event:
 
     Construction
     ------------
-    From a file:
+    2+1D from a file:
         plasma_event(hydro_file_path="path/to/evo.dat")
 
-    From pre-computed arrays (used by tabulated_plasma / functional_plasma):
+    2+1D from pre-computed arrays:
+        plasma_event(_tspace=..., _xspace=..., _T=..., _ux=..., _uy=...)
+
+    3+1D from pre-computed arrays:
         plasma_event(
-            tspace=..., xspace=...,
-            _T=..., _ux=..., _uy=...,
+            boost_invariant=False,
+            _tspace=..., _xspace=..., _etas_space=...,
+            _T=..., _ux=..., _uy=..., _uz=...,
         )
     """
+
+    # --- mode flag (must be set before arrays) ----------------------------
+    boost_invariant: bool = True
 
     # --- init inputs -------------------------------------------------------
     hydro_file_path: Optional[str] = None
@@ -142,20 +184,32 @@ class plasma_event:
     meta: Optional[dict] = None
     temp_conv_factor: float = 0.1973269788  # fm^-1 → GeV
 
-    # Raw arrays (may be supplied directly or filled in __post_init__)
-    _tspace: Optional[np.ndarray] = field(default=None, repr=False)
-    _xspace: Optional[np.ndarray] = field(default=None, repr=False)
-    _T:      Optional[np.ndarray] = field(default=None, repr=False)  # (NT,NX,NX)
-    _ux:     Optional[np.ndarray] = field(default=None, repr=False)
-    _uy:     Optional[np.ndarray] = field(default=None, repr=False)
+    # Grid axes (filled by __post_init__ if not supplied directly)
+    _tspace:    Optional[np.ndarray] = field(default=None, repr=False)
+    _xspace:    Optional[np.ndarray] = field(default=None, repr=False)
+    _etas_space: Optional[np.ndarray] = field(default=None, repr=False)  # 3+1D only
 
-    # Gradient arrays (computed in __post_init__)
+    # Primary field arrays
+    # 2+1D: shape (NT, NX, NX)
+    # 3+1D: shape (NT, NX, NX, NETA)
+    _T:  Optional[np.ndarray] = field(default=None, repr=False)
+    _ux: Optional[np.ndarray] = field(default=None, repr=False)
+    _uy: Optional[np.ndarray] = field(default=None, repr=False)
+    _uz: Optional[np.ndarray] = field(default=None, repr=False)  # 3+1D only
+
+    # Gradient arrays (computed in __post_init__ if not supplied)
     _dT_dx:    Optional[np.ndarray] = field(default=None, repr=False)
     _dT_dy:    Optional[np.ndarray] = field(default=None, repr=False)
+    _dT_deta:  Optional[np.ndarray] = field(default=None, repr=False)  # 3+1D only
     _dux_dx:   Optional[np.ndarray] = field(default=None, repr=False)
     _dux_dy:   Optional[np.ndarray] = field(default=None, repr=False)
+    _dux_deta: Optional[np.ndarray] = field(default=None, repr=False)  # 3+1D only
     _duy_dx:   Optional[np.ndarray] = field(default=None, repr=False)
     _duy_dy:   Optional[np.ndarray] = field(default=None, repr=False)
+    _duy_deta: Optional[np.ndarray] = field(default=None, repr=False)  # 3+1D only
+    _duz_dx:   Optional[np.ndarray] = field(default=None, repr=False)  # 3+1D only
+    _duz_dy:   Optional[np.ndarray] = field(default=None, repr=False)  # 3+1D only
+    _duz_deta: Optional[np.ndarray] = field(default=None, repr=False)  # 3+1D only
 
     # --- domain metadata (set in __post_init__) ----------------------------
     timestep: float = field(init=False)
@@ -166,12 +220,19 @@ class plasma_event:
     ymin:     float = field(init=False)
     ymax:     float = field(init=False)
     gridstep: float = field(init=False)
+    etasmin:  float = field(init=False)  # 0.0 in boost-invariant mode
+    etasmax:  float = field(init=False)  # 0.0 in boost-invariant mode
 
     # -----------------------------------------------------------------------
 
     def __post_init__(self) -> None:
         # --- 1. Source the raw arrays ---------------------------------------
         if self.hydro_file_path is not None:
+            if not self.boost_invariant:
+                raise ValueError(
+                    "hydro_file_path reader is for osu-hydro (2+1D) only. "
+                    "Supply arrays directly for 3+1D mode."
+                )
             logging.info(f"Reading osu-hydro file: {self.hydro_file_path}")
             tsp, xsp, T, ux, uy = _read_osu_hydro(
                 self.hydro_file_path, self.temp_conv_factor
@@ -187,20 +248,38 @@ class plasma_event:
                 "plasma_event: supply hydro_file_path OR (_tspace, _xspace, _T, _ux, _uy)."
             )
 
+        if not self.boost_invariant:
+            if self._etas_space is None or self._uz is None:
+                raise ValueError(
+                    "3+1D mode requires _etas_space and _uz arrays."
+                )
+
         # --- 2. Pre-compute spatial gradients (once, from raw arrays) -------
-        gs = float(self._xspace[-1] - self._xspace[-2])  # gridstep
-        if self._dT_dx is None:
-            self._dT_dx  = np.gradient(self._T,  gs, axis=1)
-        if self._dT_dy is None:
-            self._dT_dy  = np.gradient(self._T,  gs, axis=2)
-        if self._dux_dx is None:
-            self._dux_dx = np.gradient(self._ux, gs, axis=1)
-        if self._dux_dy is None:
-            self._dux_dy = np.gradient(self._ux, gs, axis=2)
-        if self._duy_dx is None:
-            self._duy_dx = np.gradient(self._uy, gs, axis=1)
-        if self._duy_dy is None:
-            self._duy_dy = np.gradient(self._uy, gs, axis=2)
+        gs = float(self._xspace[-1] - self._xspace[-2])  # spatial grid step
+
+        if self.boost_invariant:
+            # 3D gradients only (axes: 0=tau, 1=x, 2=y)
+            if self._dT_dx  is None: self._dT_dx  = np.gradient(self._T,  gs, axis=1)
+            if self._dT_dy  is None: self._dT_dy  = np.gradient(self._T,  gs, axis=2)
+            if self._dux_dx is None: self._dux_dx = np.gradient(self._ux, gs, axis=1)
+            if self._dux_dy is None: self._dux_dy = np.gradient(self._ux, gs, axis=2)
+            if self._duy_dx is None: self._duy_dx = np.gradient(self._uy, gs, axis=1)
+            if self._duy_dy is None: self._duy_dy = np.gradient(self._uy, gs, axis=2)
+        else:
+            # 4D gradients (axes: 0=tau, 1=x, 2=y, 3=eta_s)
+            es = float(self._etas_space[-1] - self._etas_space[-2])  # eta_s step
+            if self._dT_dx   is None: self._dT_dx   = np.gradient(self._T,  gs, axis=1)
+            if self._dT_dy   is None: self._dT_dy   = np.gradient(self._T,  gs, axis=2)
+            if self._dT_deta is None: self._dT_deta = np.gradient(self._T,  es, axis=3)
+            if self._dux_dx   is None: self._dux_dx   = np.gradient(self._ux, gs, axis=1)
+            if self._dux_dy   is None: self._dux_dy   = np.gradient(self._ux, gs, axis=2)
+            if self._dux_deta is None: self._dux_deta = np.gradient(self._ux, es, axis=3)
+            if self._duy_dx   is None: self._duy_dx   = np.gradient(self._uy, gs, axis=1)
+            if self._duy_dy   is None: self._duy_dy   = np.gradient(self._uy, gs, axis=2)
+            if self._duy_deta is None: self._duy_deta = np.gradient(self._uy, es, axis=3)
+            if self._duz_dx   is None: self._duz_dx   = np.gradient(self._uz, gs, axis=1)
+            if self._duz_dy   is None: self._duz_dy   = np.gradient(self._uz, gs, axis=2)
+            if self._duz_deta is None: self._duz_deta = np.gradient(self._uz, es, axis=3)
 
         # --- 3. Domain metadata --------------------------------------------
         self.t0       = float(np.amin(self._tspace))
@@ -211,17 +290,31 @@ class plasma_event:
         self.ymin     = self.xmin
         self.ymax     = self.xmax
         self.gridstep = gs
+        if self.boost_invariant:
+            self.etasmin = 0.0
+            self.etasmax = 0.0
+        else:
+            self.etasmin = float(np.amin(self._etas_space))
+            self.etasmax = float(np.amax(self._etas_space))
 
     # -----------------------------------------------------------------------
-    # Private interpolation helper (uses stored arrays; no closures)
+    # Private interpolation dispatch
     # -----------------------------------------------------------------------
 
     def _eval(self, arr: np.ndarray, pts: np.ndarray) -> np.ndarray:
-        """Interpolate *arr* (shape NT×NX×NX) at *pts* (...,3 or 4)."""
-        return _interp(arr, self._tspace, self._xspace, pts)
+        """
+        Evaluate *arr* at *pts* (..., 4).
+
+        In boost-invariant mode: arr is (NT,NX,NY),  eta_s column is dropped.
+        In 3+1D mode:            arr is (NT,NX,NY,NETA), all 4 coords used.
+        """
+        if self.boost_invariant:
+            return _eval_3d(arr, self._tspace, self._xspace, pts)
+        else:
+            return _eval_4d(arr, self._tspace, self._xspace, self._etas_space, pts)
 
     # -----------------------------------------------------------------------
-    # Field callables (preserve original names exactly)
+    # Field callables (public API — identical signatures for both modes)
     # -----------------------------------------------------------------------
 
     def temp(self, pts) -> np.ndarray:
@@ -229,30 +322,52 @@ class plasma_event:
         return self._eval(self._T, pts)
 
     def x_vel(self, pts) -> np.ndarray:
-        """Lab-frame x-velocity = ux / cosh(eta_s)."""
-        p = np.asarray(pts)
-        ux = self._eval(self._ux, p)
-        eta_s = p[..., 3] if p.shape[-1] == 4 else 0.0
-        return ux / np.cosh(eta_s)
+        """
+        Lab-frame x-velocity.
+        2+1D: ux / cosh(eta_s)   (Bjorken boost-invariant decomposition)
+        3+1D: interpolated directly from stored ux field
+        """
+        p = np.asarray(pts, dtype=float)
+        if self.boost_invariant:
+            ux = self._eval(self._ux, p)
+            eta_s = p[..., 3] if p.shape[-1] == 4 else 0.0
+            return ux / np.cosh(eta_s)
+        else:
+            return self._eval(self._ux, p)
 
     def y_vel(self, pts) -> np.ndarray:
-        """Lab-frame y-velocity = uy / cosh(eta_s)."""
-        p = np.asarray(pts)
-        uy = self._eval(self._uy, p)
-        eta_s = p[..., 3] if p.shape[-1] == 4 else 0.0
-        return uy / np.cosh(eta_s)
+        """
+        Lab-frame y-velocity.
+        2+1D: uy / cosh(eta_s)
+        3+1D: interpolated directly from stored uy field
+        """
+        p = np.asarray(pts, dtype=float)
+        if self.boost_invariant:
+            uy = self._eval(self._uy, p)
+            eta_s = p[..., 3] if p.shape[-1] == 4 else 0.0
+            return uy / np.cosh(eta_s)
+        else:
+            return self._eval(self._uy, p)
 
     def z_vel(self, pts) -> np.ndarray:
-        """Lab-frame z-velocity = tanh(eta_s)."""
-        p = np.asarray(pts)
-        eta_s = p[..., 3] if p.shape[-1] == 4 else 0.0
-        return np.tanh(eta_s)
+        """
+        Lab-frame z-velocity.
+        2+1D: tanh(eta_s)   (exact Bjorken result)
+        3+1D: interpolated from stored uz field
+        """
+        p = np.asarray(pts, dtype=float)
+        if self.boost_invariant:
+            eta_s = p[..., 3] if p.shape[-1] == 4 else 0.0
+            return np.tanh(eta_s)
+        else:
+            return self._eval(self._uz, p)
 
     def vel(self, pts) -> np.ndarray:
         """Total velocity magnitude sqrt(vx²+vy²+vz²)."""
         return np.sqrt(self.x_vel(pts)**2 + self.y_vel(pts)**2 + self.z_vel(pts)**2)
 
-    # Temperature gradients
+    # --- Temperature gradients ---
+
     def temp_grad_x(self, pts) -> np.ndarray:
         return self._eval(self._dT_dx, pts)
 
@@ -260,11 +375,18 @@ class plasma_event:
         return self._eval(self._dT_dy, pts)
 
     def temp_grad_z(self, pts) -> np.ndarray:
-        """ Boost-invariant model: literal boost invariance of temperature """
-        p = np.asarray(pts)
-        return np.zeros(p.shape[:-1])
+        """
+        2+1D: zero (boost-invariant)
+        3+1D: interpolated d(T)/d(eta_s)
+        """
+        if self.boost_invariant:
+            p = np.asarray(pts, dtype=float)
+            return np.zeros(p.shape[:-1])
+        else:
+            return self._eval(self._dT_deta, pts)
 
-    # Flow velocity gradient tensor (spatial components)
+    # --- Flow velocity gradient tensor ---
+
     def grad_x_u_x(self, pts) -> np.ndarray:
         return self._eval(self._dux_dx, pts)
 
@@ -272,9 +394,11 @@ class plasma_event:
         return self._eval(self._duy_dx, pts)
 
     def grad_x_u_z(self, pts) -> np.ndarray:
-        """ Boost-invariant model: z velocity is only dependent on eta_s """
-        p = np.asarray(pts)
-        return np.zeros(p.shape[:-1])
+        if self.boost_invariant:
+            p = np.asarray(pts, dtype=float)
+            return np.zeros(p.shape[:-1])
+        else:
+            return self._eval(self._duz_dx, pts)
 
     def grad_y_u_x(self, pts) -> np.ndarray:
         return self._eval(self._dux_dy, pts)
@@ -283,26 +407,38 @@ class plasma_event:
         return self._eval(self._duy_dy, pts)
 
     def grad_y_u_z(self, pts) -> np.ndarray:
-        """ Boost-invariant model: z velocity is only dependent on eta_s """
-        p = np.asarray(pts)
-        return np.zeros(p.shape[:-1])
+        if self.boost_invariant:
+            p = np.asarray(pts, dtype=float)
+            return np.zeros(p.shape[:-1])
+        else:
+            return self._eval(self._duz_dy, pts)
 
     def grad_z_u_x(self, pts) -> np.ndarray:
-        """ Boost-invariant model: transverse velocity is z-independent """
-        p = np.asarray(pts)
-        return np.zeros(p.shape[:-1])
+        if self.boost_invariant:
+            p = np.asarray(pts, dtype=float)
+            return np.zeros(p.shape[:-1])
+        else:
+            return self._eval(self._dux_deta, pts)
 
     def grad_z_u_y(self, pts) -> np.ndarray:
-        """ Boost-invariant model: transverse velocity is z-independent """
-        p = np.asarray(pts)
-        return np.zeros(p.shape[:-1])
+        if self.boost_invariant:
+            p = np.asarray(pts, dtype=float)
+            return np.zeros(p.shape[:-1])
+        else:
+            return self._eval(self._duy_deta, pts)
 
     def grad_z_u_z(self, pts) -> np.ndarray:
-        """ 1 / (tau * cosh(eta_s)) — kinematic term from boost invariance. """
-        p = np.asarray(pts)
-        tau   = p[..., 0]
-        eta_s = p[..., 3] if p.shape[-1] == 4 else 0.0
-        return 1.0 / (tau * np.cosh(eta_s))
+        """
+        2+1D: 1 / (tau * cosh(eta_s))  — kinematic Bjorken term
+        3+1D: interpolated d(uz)/d(eta_s)
+        """
+        p = np.asarray(pts, dtype=float)
+        if self.boost_invariant:
+            tau   = p[..., 0]
+            eta_s = p[..., 3] if p.shape[-1] == 4 else 0.0
+            return 1.0 / (tau * np.cosh(eta_s))
+        else:
+            return self._eval(self._duz_deta, pts)
 
     # -----------------------------------------------------------------------
     # Domain helpers
@@ -323,11 +459,19 @@ class plasma_event:
     # -----------------------------------------------------------------------
 
     def _grid_points(self, time: float, resolution: int) -> np.ndarray:
-        """Return a (resolution, resolution, 3) array of (tau, x, y) grid points."""
+        """
+        Return a grid of query points at fixed *time* and eta_s=0,
+        shaped (resolution, resolution, 3) for 2+1D or (resolution, resolution, 4) for 3+1D.
+        """
         x_sp = self.xspace(resolution=resolution)
         x_coords, y_coords = np.meshgrid(x_sp, x_sp, indexing='ij')
         t_coords = np.full_like(x_coords, time)
-        return np.transpose(np.array([t_coords, x_coords, y_coords]), (2, 1, 0))
+
+        if self.boost_invariant:
+            return np.transpose(np.array([t_coords, x_coords, y_coords]), (2, 1, 0))
+        else:
+            etas_coords = np.zeros_like(x_coords)
+            return np.transpose(np.array([t_coords, x_coords, y_coords, etas_coords]), (2, 1, 0))
 
     def max_temp(self, resolution: int = 100, time='i') -> float:
         if time == 'i':
@@ -361,7 +505,7 @@ class plasma_event:
         )
 
     # -----------------------------------------------------------------------
-    # Plotting
+    # Plotting  (2+1D slice at fixed eta_s; works for both modes)
     # -----------------------------------------------------------------------
 
     def plot(self, time=None, temp_resolution=100, vel_resolution=100,
@@ -375,19 +519,18 @@ class plasma_event:
         transposeAxes = (2, 1, 0)
 
         # --- Temperature ---
+        x_space = self.xspace(resolution=temp_resolution, fraction=zoom)
         if plot_temp:
-            x_space = self.xspace(resolution=temp_resolution, fraction=zoom)
             x_coords, y_coords = np.meshgrid(x_space, x_space, indexing='ij')
             t_coords = np.full_like(x_coords, time)
             points = np.transpose(np.array([t_coords, x_coords, y_coords]), transposeAxes)
             temp_points = self.temp(points)
         else:
-            x_space = self.xspace(resolution=temp_resolution, fraction=zoom)
             temp_points = 0
 
         # --- Velocities ---
+        x_space_vel = self.xspace(resolution=vel_resolution, fraction=zoom)
         if plot_vel:
-            x_space_vel = self.xspace(resolution=vel_resolution, fraction=zoom)
             vel_x_coords, vel_y_coords = np.meshgrid(x_space_vel, x_space_vel, indexing='ij')
             vel_etas = np.full_like(vel_x_coords, eta_s)
             vel_t = np.full_like(vel_x_coords, time)
@@ -397,12 +540,11 @@ class plasma_event:
             x_vels = self.x_vel(vel_points)
             y_vels = self.y_vel(vel_points)
         else:
-            x_space_vel = self.xspace(resolution=vel_resolution, fraction=zoom)
             x_vels = y_vels = 0
 
         # --- Gradients ---
+        x_space_grad = self.xspace(resolution=grad_resolution, fraction=zoom)
         if plot_grad:
-            x_space_grad = self.xspace(resolution=grad_resolution, fraction=zoom)
             gx_coords, gy_coords = np.meshgrid(x_space_grad, x_space_grad, indexing='ij')
             g_etas = np.full_like(gx_coords, eta_s)
             g_t = np.full_like(gx_coords, time)
@@ -414,7 +556,6 @@ class plasma_event:
             grad_mags = np.sqrt(grad_x**2 + grad_y**2)
             grad_max = float(np.amax(grad_mags))
         else:
-            x_space_grad = self.xspace(resolution=grad_resolution, fraction=zoom)
             grad_x = grad_y = 0
             grad_max = 1.0
 
@@ -494,38 +635,155 @@ class plasma_event:
         return temps, vels, grads, tempcb, velcb, gradcb
 
 
-# Takes tabulated data for the temperature and velocities
-# and returns plasma_event objects generated from them.
-def tabulated_plasma(t_space, x_space, temp_values, x_vel_values, y_vel_values, name=None, return_grids=False):
-    # Feed tabulated data to constructor -- plasma_event handles gradients
-    plasma_object = plasma_event(
-        name=name,
-        _tspace=np.asarray(t_space),
-        _xspace=np.asarray(x_space),
-        _T=np.asarray(temp_values),
-        _ux=np.asarray(x_vel_values),
-        _uy=np.asarray(y_vel_values),
-    )
+# ---------------------------------------------------------------------------
+# Factory helpers (public API preserved)
+# ---------------------------------------------------------------------------
+
+def tabulated_plasma(t_space, x_space, temp_values, x_vel_values, y_vel_values,
+                     name=None, return_grids=False,
+                     boost_invariant=True,
+                     etas_space=None, z_vel_values=None):
+    """
+    Build a plasma_event from pre-computed grid arrays.
+
+    2+1D (default):
+        Arrays shaped (NT, NX, NX).  boost_invariant=True (default).
+
+    3+1D:
+        Arrays shaped (NT, NX, NX, NETA).
+        Pass boost_invariant=False, etas_space=<1D array>, z_vel_values=<array>.
+    """
+    logging.debug('WARNING: Gradients of temp and flow not verified')
+
+    if boost_invariant:
+        plasma_object = plasma(
+            boost_invariant=True,
+            name=name,
+            _tspace=np.asarray(t_space),
+            _xspace=np.asarray(x_space),
+            _T=np.asarray(temp_values),
+            _ux=np.asarray(x_vel_values),
+            _uy=np.asarray(y_vel_values),
+        )
+    else:
+        if etas_space is None or z_vel_values is None:
+            raise ValueError(
+                "tabulated_plasma: 3+1D mode requires etas_space and z_vel_values."
+            )
+        plasma_object = plasma(
+            boost_invariant=False,
+            name=name,
+            _tspace=np.asarray(t_space),
+            _xspace=np.asarray(x_space),
+            _etas_space=np.asarray(etas_space),
+            _T=np.asarray(temp_values),
+            _ux=np.asarray(x_vel_values),
+            _uy=np.asarray(y_vel_values),
+            _uz=np.asarray(z_vel_values),
+        )
+
     if return_grids:
         return plasma_object, temp_values, x_vel_values, y_vel_values
     return plasma_object
 
 
-def functional_plasma(temp_func=None, x_vel_func=None, y_vel_func=None, name=None,
-                      resolution=10, xmax=15, time=None, return_grids=False, tau0=0.5):
-    """Build a plasma_event by evaluating callable functions on a grid."""
+def functional_plasma_2_1D(temp_func=None, x_vel_func=None, y_vel_func=None, name=None,
+                           resolution=10, xmax=15, time=None, return_grids=False, tau0=0.5):
+    """Build a 2+1D plasma_event by evaluating callable functions on a grid."""
     if time is None:
-        t_space = np.linspace(tau0, 2 * xmax, int((xmax + xmax) * resolution))
+        t_space = np.linspace(tau0, 2 * xmax, resolution)
     else:
-        t_space = np.linspace(tau0, time, int((xmax + xmax) * resolution))
-    x_space = np.linspace(-xmax, xmax, int((xmax + xmax) * resolution))
+        t_space = np.linspace(tau0, time, resolution)
+    x_space = np.linspace(-xmax, xmax, resolution)
 
-    # Create meshgrid and evaluate functions
     t_coords, x_coords, y_coords = np.meshgrid(t_space, x_space, x_space, indexing='ij')
-    temp_values  = temp_func(t_coords, x_coords, y_coords)
-    x_vel_values = x_vel_func(t_coords, x_coords, y_coords)
-    y_vel_values = y_vel_func(t_coords, x_coords, y_coords)
 
-    # Give to tabulated plasma
+    grid_shape = t_coords.shape
+
+    def _eval_on_grid(func, *coords):
+        """Evaluate func and guarantee output is a full grid-shaped array."""
+        result = func(*coords)
+        return np.broadcast_to(np.asarray(result, dtype=float), grid_shape).copy()
+
+    temp_values  = _eval_on_grid(temp_func,  t_coords, x_coords, y_coords)
+    x_vel_values = _eval_on_grid(x_vel_func, t_coords, x_coords, y_coords)
+    y_vel_values = _eval_on_grid(y_vel_func, t_coords, x_coords, y_coords)
+
     return tabulated_plasma(t_space, x_space, temp_values, x_vel_values, y_vel_values,
                             name=name, return_grids=return_grids)
+
+#
+# def functional_plasma_3_1D(temp_func=None, x_vel_func=None, y_vel_func=None, z_vel_func=None, name=None,
+#                            resolution=10, xmax=15, time=None, return_grids=False, tau0=0.5):
+#     """Build a 3+1D plasma_event by evaluating callable functions on a grid."""
+#     if time is None:
+#         t_space = np.linspace(tau0, 2 * xmax, int((xmax + xmax) * resolution))
+#     else:
+#         t_space = np.linspace(tau0, time, int((xmax + xmax) * resolution))
+#     x_space = np.linspace(-xmax, xmax, int((xmax + xmax) * resolution))
+#     etas_space = np.array([-xmax, 0, xmax])
+#
+#     # Create meshgrid and evaluate functions
+#     t_coords, x_coords, y_coords, etas_coords = np.meshgrid(t_space, x_space, x_space, etas_space, indexing='ij')
+#     temp_values  = temp_func(t_coords, x_coords, y_coords, etas_coords)
+#     x_vel_values = x_vel_func(t_coords, x_coords, y_coords, etas_coords)
+#     y_vel_values = y_vel_func(t_coords, x_coords, y_coords, etas_coords)
+#     z_vel_values = z_vel_func(t_coords, x_coords, y_coords, etas_coords)
+#
+#     # Give to tabulated plasma
+#     return tabulated_plasma(t_space, x_space, temp_values, x_vel_values, y_vel_values, boost_invariant=False,
+#                             name=name, return_grids=return_grids, etas_space=x_space, z_vel_values=z_vel_values)
+
+def functional_plasma_3_1D(temp_func=None, x_vel_func=None, y_vel_func=None, z_vel_func=None,
+                            name=None, resolution=10, xmax=15, etasmax=5.0, time=None,
+                            return_grids=False, tau0=0.5):
+    """
+    Build a 3+1D plasma_event by evaluating callable functions on a (tau, x, y, eta_s) grid.
+
+    All four callables must accept four broadcastable array arguments:
+        func(tau, x, y, eta_s) -> array
+
+    Parameters
+    ----------
+    temp_func    : callable(tau, x, y, eta_s) -> temperature [GeV]
+    x_vel_func   : callable(tau, x, y, eta_s) -> lab-frame vx
+    y_vel_func   : callable(tau, x, y, eta_s) -> lab-frame vy
+    z_vel_func   : callable(tau, x, y, eta_s) -> lab-frame vz
+    name         : optional label stored on the plasma_event
+    resolution   : number of grid points per fm along each spatial axis
+    xmax         : half-width of the transverse grid [fm]
+    etasmax      : half-width of the eta_s grid (symmetric about 0)
+    time         : final proper time [fm]; defaults to 2*xmax
+    return_grids : if True, also return the raw evaluated arrays
+    tau0         : initial proper time [fm]
+    """
+    if time is None:
+        t_space = np.linspace(tau0, 2 * xmax, resolution)
+    else:
+        t_space = np.linspace(tau0, time, resolution)
+    x_space    = np.linspace(-xmax,    xmax,   resolution)
+    etas_space = np.linspace(-etasmax, etasmax, resolution)
+
+    t_coords, x_coords, y_coords, etas_coords = np.meshgrid(
+        t_space, x_space, x_space, etas_space, indexing='ij'
+    )
+
+    grid_shape = t_coords.shape
+
+    def _eval_on_grid(func, *coords):
+        """Evaluate func and guarantee output is a full grid-shaped array."""
+        result = func(*coords)
+        return np.broadcast_to(np.asarray(result, dtype=float), grid_shape).copy()
+
+    temp_values  = _eval_on_grid(temp_func,  t_coords, x_coords, y_coords, etas_coords)
+    x_vel_values = _eval_on_grid(x_vel_func, t_coords, x_coords, y_coords, etas_coords)
+    y_vel_values = _eval_on_grid(y_vel_func, t_coords, x_coords, y_coords, etas_coords)
+    z_vel_values = _eval_on_grid(z_vel_func, t_coords, x_coords, y_coords, etas_coords)
+
+    return tabulated_plasma(
+        t_space=t_space, x_space=x_space, etas_space=etas_space,
+        temp_values=temp_values,
+        x_vel_values=x_vel_values, y_vel_values=y_vel_values, z_vel_values=z_vel_values,
+        name=name, return_grids=return_grids,
+        boost_invariant=False
+    )

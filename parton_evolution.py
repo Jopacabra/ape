@@ -23,7 +23,7 @@ plasma.
 Returns a list of emmitted particle momenta, plus
 True if the particle was evolved the full tau window requested or false if it was not.
 """
-def evolve_particle(particle : hard_particles.Particle, plasma_object : plasma.plasma_event, nn=None, tau=None):
+def evolve_particle(particle : hard_particles.Particle, plasma_object : plasma.plasma, nn=None, tau=None):
     # Create list of emitted particles to be tracked later
     emission_momenta_total = []
     emission_coords_total = []
