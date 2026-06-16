@@ -158,6 +158,25 @@ elif event_type == "Duke_avg":
     # Note that we need write permissions in the working directory
     plasma_object = collision.generate_event(working_dir=event_dir, IC_type="Duke_avg", seed=seed)
 
+# Create a slab of flowing plasma with flow pointing in the positive x direction
+elif event_type == "slab":
+    logging.info("Generating x-direction slab...")
+
+    def temp_func(t, x, y, etas):
+        return 0.4
+    def x_vel_func(t, x, y, etas):
+        return 0.7
+    def y_vel_func(t, x, y, etas):
+        return 0.0
+    def z_vel_func(t, x, y, etas):
+        return 0.0
+
+    plasma_object = plasma.functional_plasma_3_1D(temp_func=temp_func,
+                                                  x_vel_func=x_vel_func,
+                                                  y_vel_func=y_vel_func,
+                                                  z_vel_func=z_vel_func,
+                                                  name=None, resolution=10, xmax=10, time=10, tau0=0.5)
+
 # Load a saved Duke event
 else:
     try:
