@@ -419,3 +419,77 @@ def config_to_dict(cls, prefix=""):
     return result
 
 
+def transverse_basis(p_hat):
+    """
+    Construct a right-handed orthonormal pair (e1, e2) spanning the plane
+    perpendicular to p_hat.
+
+    The seed axis is chosen as the global Cartesian axis least aligned with
+    p_hat to avoid Gram-Schmidt degeneracy.
+
+    Parameters
+    ----------
+    p_hat : (3,) array
+        Unit vector along the trajectory.
+
+    Returns
+    -------
+    e1, e2 : (3,) arrays
+        Orthonormal vectors with e1 x e2 = p_hat (right-handed).
+    """
+    p_hat = np.asarray(p_hat, dtype=float)
+    p_hat = p_hat / np.linalg.norm(p_hat)
+
+    # Choose the global axis least aligned with p_hat as the Gram-Schmidt seed
+    seed = np.eye(3)[np.argmin(np.abs(p_hat))]
+
+    e1 = seed - np.dot(seed, p_hat) * p_hat
+    e1 /= np.linalg.norm(e1)
+    e2 = np.cross(p_hat, e1)
+    e2 /= np.linalg.norm(e2)
+    return e1, e2
+
+
+def det_M(grad_u, u_par_mag, z, e1, e2):
+    """
+    Compute, per coordinate,
+
+        det[M] = det( delta_ia + (nabla_i u_a)/(1 - u_par) * z )
+
+    with i, a running over the two transverse directions (e1, e2).
+
+    Equivalently (matching the expanded analytic form):
+        det[M] = 1
+                 + (g11 + g22) * z / (1 - u_par)
+                 + (g11*g22 - g12*g21) * z^2 / (1 - u_par)^2
+    where g_ia = e_i . grad_u . e_a.
+
+    Parameters
+    ----------
+    grad_u : (N, 3, 3) array
+        grad_u[n, i, j] = d(u_j)/d(x_i) = nabla_i u_j.
+    u_par_mag : (N,) array
+        Magnitude of the flow parallel to the trajectory, |u_par|.
+    z : (N,) array
+        Path-length coordinate tau.
+    e1, e2 : (3,) arrays
+        Orthonormal transverse basis vectors.
+
+    Returns
+    -------
+    detM : (N,) array
+        det[M] evaluated at each coordinate.
+    """
+    HBARC = 0.1973269804  # GeV * fm
+
+    E = np.stack([e1, e2], axis=0)  # (2, 3)
+
+    # Project the velocity gradient tensor into the transverse plane:
+    # g[n, i, a] = e_i^k (nabla_k u_l) e_a^l,  i, a in {1, 2}
+    g = np.einsum('ik,nkl,al->nia', E, grad_u, E)  # (N, 2, 2)
+
+    # Note that we don't need a factor of HBARC. The gradients are natively in units [fm^-1] because of the units of the hydro grid.
+    factor = z / (1.0 - u_par_mag)                      # (N,)
+    M = np.eye(2)[None, :, :] + factor[:, None, None] * g  # (N, 2, 2)
+
+    return np.linalg.det(M)
