@@ -1,8 +1,6 @@
 import logging
 import math
 import os
-import sys
-from pathlib import Path
 import subprocess
 import tempfile
 import numpy as np
@@ -252,6 +250,20 @@ def perp_vec(a, b):
     # Subtract off component of a perpendicular to b
     return a - (np.dot(a, b) / pp) * b
 
+
+# Get the component of vector a perpendicular to vector b.
+# a and b can be single vectors or arrays of vectors (shape [..., N]).
+def perp_vec_list(a, b):
+    # Get numpy arrays
+    a = np.asarray(a, dtype=float)
+    b = np.asarray(b, dtype=float)
+
+    # Magnitude^2 of b (along last axis)
+    pp = np.sum(b * b, axis=-1, keepdims=True)
+
+    # Subtract off component of a parallel to b
+    return a - (np.sum(a * b, axis=-1, keepdims=True) / pp) * b
+
 # Get the component of vector a parallel to vector b.
 def par_vec(a, b):
     # Get numpy arrays
@@ -263,6 +275,20 @@ def par_vec(a, b):
 
     # Component of u parallel to p
     return (np.dot(a, b) / pp) * b
+
+
+# Get the component of vector a parallel to vector b.
+# a and b can be single vectors or arrays of vectors (shape [..., N]).
+def par_vec_list(a, b):
+    # Get numpy arrays
+    a = np.asarray(a, dtype=float)
+    b = np.asarray(b, dtype=float)
+
+    # Magnitude^2 of b (along last axis)
+    pp = np.sum(b * b, axis=-1, keepdims=True)
+
+    # Component of a parallel to b
+    return (np.sum(a * b, axis=-1, keepdims=True) / pp) * b
 
 
 def zeta(q=0, maxAttempts=5, batch=1000):
@@ -393,35 +419,3 @@ def config_to_dict(cls, prefix=""):
     return result
 
 
-def sample_rad_dist(rad_dist, kx_values, ky_values, kz_values, N_samples=1):
-    """
-    Function to sample radiation distribution for kx, ky, kz.
-    Treat dI/(dxdkxdky) as an (unnormalized) 3D probability density and draw N_samples points (kx, ky, kz) from it.
-    """
-
-    # Build a normalized flat PDF, then a CDF
-    I_flat = rad_dist.ravel()
-    I_flat_pos = np.clip(I_flat, 0, None)  # ensure non-negative
-    pdf = I_flat_pos / I_flat_pos.sum()  # normalize to sum to 1
-    cdf = np.cumsum(pdf)  # build CDF
-    cdf[-1] = 1.0  # Force exact upper bound — removes all floating point slop
-
-    # Draw uniform samples and find where they land in the CDF
-    uniform_samples = 1.0 - rng.uniform(size=N_samples)
-    flat_indices = np.searchsorted(cdf, uniform_samples, side="right")  # shape: (N_samples,)
-
-    # Convert flat indices back to 3D grid indices
-    ikx, iky, ikz = np.unravel_index(flat_indices, rad_dist.shape)
-
-    # Look up the corresponding coordinate values
-    sampled_kz = kz_values[ikz]
-    sampled_kx = kx_values[ikx]
-    sampled_ky = ky_values[iky]
-
-    # Stack values
-    emission_momentum = np.column_stack([sampled_kx, sampled_ky, sampled_kz])
-
-    if N_samples == 1:
-        return np.reshape(emission_momentum, 3)
-    else:
-        return emission_momentum

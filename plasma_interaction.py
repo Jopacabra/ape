@@ -1,4 +1,6 @@
 import numpy as np
+from xarray.ufuncs import invert
+
 import config
 import hard_particles
 import plasma
@@ -8,8 +10,14 @@ import os
 import sys
 from pathlib import Path
 from scipy.ndimage import map_coordinates
+import vegas
 
-from utilities import zeta, perp_vec
+
+import scipy.integrate as integrate
+import time
+
+
+from utilities import zeta, perp_vec, rng
 
 # Get the path of this file and import the radiation NN path
 script_dir = str(Path(__file__).resolve().parent)
@@ -424,7 +432,7 @@ def aniso_rad_dist(particle: hard_particles.Particle, medium: plasma.plasma_even
     """
     assert len(ky_values) % 2 == 0  # Array has an even number of entries
     # assert np.array_equal(ky_values, -ky_values[::-1])  # Array is symmetric about 0
-    hbar = 0.1973269804  # GeV * fm
+    hbarc = 0.1973269804  # GeV * fm
 
     # Gather particle and medium properties.
     if particle.isq:
@@ -449,13 +457,13 @@ def aniso_rad_dist(particle: hard_particles.Particle, medium: plasma.plasma_even
     delta_pathlength = np.sqrt(delta_x ** 2 + delta_y ** 2 + delta_z ** 2)
 
     # Warn if we're outside our training domain
-    # if particle.tau + delta_pathlength / hbar > np.amax(nn.X[5]):
+    # if particle.tau + delta_pathlength / hbarc > np.amax(nn.X[5]):
     #     logging.warning("Particle pathlength is outside of training domain! Good luck!")
     # if temp > np.amax(nn.X[7]) or temp < np.amin(nn.X[7]):
     #     logging.warning("Temperature is outside of training domain! Good luck!")
     # if np.linalg.norm(uperp) > np.amax(nn.X[6]) or np.linalg.norm(uperp) < np.amin(nn.X[6]):
     #     logging.warning("Perp. velocity is outside of training domain! Good luck!")
-    if particle.tau + delta_pathlength / hbar > 50.0:
+    if particle.tau + delta_pathlength / hbarc > 50.0:
         logging.warning("Particle pathlength is outside of training domain! Good luck!")
     if temp > 0.650 or temp < 0.150:
         logging.warning("Temperature is outside of training domain! Good luck!")
@@ -465,8 +473,8 @@ def aniso_rad_dist(particle: hard_particles.Particle, medium: plasma.plasma_even
     # Compute number distribution of radiation generated in this step
     dtau_rad_dist = nn.compute_dNd3k_grid(
         E=particle.E0,  # Use E0 to avoid rescaling the meaning of x between steps
-        z0=particle.tau / hbar,  # tau is in fm, need to give to NN in GeV^{-1}
-        zf=(particle.tau + delta_pathlength) / hbar,  # tau & dtau are in fm, need to give to NN in GeV^{-1}
+        z0=particle.tau / hbarc,  # tau is in fm, need to give to NN in GeV^{-1}
+        zf=(particle.tau + delta_pathlength) / hbarc,  # tau & dtau are in fm, need to give to NN in GeV^{-1}
         u_perp=np.linalg.norm(uperp),
         T=temp,
         g=config.constants.G,
@@ -593,3 +601,321 @@ def rotate_rad_dist(particle: hard_particles.Particle, medium: plasma.plasma_eve
         logging.warning(f"Radiation distribution rotation change: {change*100}%")
 
     return rotated_rad_dist
+
+
+def E_gluons(particle: hard_particles.Particle, medium: plasma.plasma_event, dtau: float):
+    """
+    This function returns the analytically computed energy of emitted gluons at first order in opacity with infinite
+    kinematic bounds, as in https://arxiv.org/pdf/nucl-th/0012092 Eq. 9
+    """
+    # Gather particle and medium properties.
+    HBARC = 0.197327  # GeV·fm
+    ALPHAS = (config.constants.G**2) / (4*np.pi)
+    if particle.isq:
+        CR = 4 / 3
+    elif particle.isg:
+        CR = 3
+    else:
+        # Default to quark CF
+        CR = 4 / 3
+    E = particle.E0  # Uses particle E0, since we are deploying this with the similar choice made in querying the NN.
+    point = particle.coords
+    temp = medium.temp(point)[0]
+    if temp == np.nan:  # Cancel evolution if we exit the plasma space
+        raise NoMedium()
+    elif temp < config.jet.T_HRG:  # Cancel evolution if we exit the plasma phase
+        raise HadronGas()
+
+    # Get pathlength traveled in this step
+    delta_t, delta_x, delta_y, delta_z = particle.next_pathlength(dtau, cart=True)
+    delta_L = np.sqrt(delta_x ** 2 + delta_y ** 2 + delta_z ** 2)
+
+    # The (z-z0) factor should be identified with the current pathlength in the plasma, particle.tau. This retains the
+    # overall L^2 behavior of the function. The $\int dz$ factor gives us the pathlength in this step.
+    intdz = delta_L / HBARC
+    L0 = (min(particle.tau - medium.t0, 0) / HBARC)
+    L = (L0 + L0 + intdz) / 2  # Average pathlength in plasma of step, preventing 0.
+    mu = mu_DeBye(T=temp)
+
+    return (E * (2 * CR * ALPHAS/np.pi) * intdz * (mu ** 2) * inv_lambda(T=temp, hard_pid=particle.id)
+            * L * np.log(E / mu))
+
+
+def N_gluons(particle: hard_particles.Particle, medium: plasma.plasma_event, dtau: float):
+    """
+    This function returns the analytically computed number of emitted gluons at first order in opacity with infinite
+    kinematic bounds, as in https://arxiv.org/pdf/nucl-th/0012092 Eq. 7
+
+    We take the opposite limit as they do to arrive at Eq. 9, assuming small $x << x_c = (L \mu^2 / (2 E))$.
+    Then, we can apply a factor of (1/(xE)) and integrate over x from $x_{min} = \mu/E$ to $x_{max} = x_c$. We need
+    a minimum value of x here because, while $dI/dx \propto \log(1/x)$ is integrable to zero,
+    $dN/dx \propto \log(1/x)/x$ is not.
+    """
+    # Gather particle and medium properties.
+    HBARC = 0.197327  # GeV·fm
+    ALPHAS = (config.constants.G**2) / (4*np.pi)
+    if particle.isq:
+        CR = 4 / 3
+    elif particle.isg:
+        CR = 3
+    else:
+        # Default to quark CF
+        CR = 4 / 3
+    E = particle.E0  # Uses particle E0, since we are deploying this with the similar choice made in querying the NN.
+    point = particle.coords
+    temp = medium.temp(point)[0]
+    if temp == np.nan:  # Cancel evolution if we exit the plasma space
+        raise NoMedium()
+    elif temp < config.jet.T_HRG:  # Cancel evolution if we exit the plasma phase
+        raise HadronGas()
+
+    # Get pathlength traveled in this step
+    delta_t, delta_x, delta_y, delta_z = particle.next_pathlength(dtau, cart=True)
+    delta_L = np.sqrt(delta_x ** 2 + delta_y ** 2 + delta_z ** 2)
+
+    # The (z-z0) factor should be identified with the current pathlength in the plasma, particle.tau. This retains the
+    # overall L^2 behavior of the function. The $\int dz$ factor gives us the pathlength in this step.
+    intdz = delta_L / HBARC
+    L0 = (min(particle.tau - medium.t0, 0) / HBARC)
+    L = (L0 + L0 + intdz) / 2  # Average pathlength in plasma of step, preventing 0.
+    mu = mu_DeBye(T=temp)
+    xmin = mu / E
+
+    # Note here that the 1/2 inside the log is scheme dependent. It also is a constant, so leading log approximations
+    # often drop it. Don't be too perturbed by its presence or abcense in different works.
+    return ((CR * ALPHAS/np.pi) * intdz * inv_lambda(T=temp, hard_pid=particle.id)
+            * np.log(L * (mu ** 2) / (2 * E * xmin))**2)
+
+def N_gluons_fk(particle: hard_particles.Particle, medium: plasma.plasma_event, dtau: float):
+    """
+    This function numerically integrates the distribution of emitted gluons at first order in opacity with finite
+    kinematic bounds, as in https://arxiv.org/pdf/nucl-th/0012092 Eq. 5
+    """
+    # Gather particle and medium properties.
+    if particle.isq:
+        CR = 4 / 3
+    elif particle.isg:
+        CR = 3
+    else:
+        # Default to quark CF
+        CR = 4 / 3
+    p = particle.p3
+    point = particle.coords
+    temp = medium.temp(point)[0]
+    if temp == np.nan:  # Cancel evolution if we exit the plasma space
+        raise NoMedium()
+    elif temp < config.jet.T_HRG:  # Cancel evolution if we exit the plasma phase
+        raise HadronGas()
+
+    # Get pathlength traveled in this step
+    delta_t, delta_x, delta_y, delta_z = particle.next_pathlength(dtau, cart=True)
+    delta_pathlength = np.sqrt(delta_x ** 2 + delta_y ** 2 + delta_z ** 2)
+
+    # ==============================================================================
+    #  dN^(1)/dx = (1/xE) d^(1)I/dx, based on
+    #  GLV first-order gluon number distribution  dI^(1)/dx
+    #  Eq. 5 of Gyulassy, Vitev, Wang  (nucl-th/0012092)
+    #
+    #  dI/dx = (9 C_R E / pi^2)
+    #          * int_{z0}^{zf} dz  rho(z)
+    #          * int d^2k  alpha_s
+    #          * int d^2q  alpha_s^2 / (q^2 + mu^2)^2
+    #          * [ k.q / (k^2 (k-q)^2) ]
+    #          * [ 1 - cos( (k-q)^2 / (2 x E) * (z - z0) ) ]
+    #
+    #  Static medium over short pathlength: rho(z) = rho0 = const
+    #  Note: Casimir factor C_R is NOT included; multiply at runtime
+    #        (4/3 for quark, 3 for gluon).
+    # ==============================================================================
+
+    HBARC = 0.197327  # GeV·fm
+
+    # Integration settings
+    NITN_WARMUP = 10
+    NITN = 10
+    NEVAL = 20_000
+
+    # Kinematic-cutoff factors (relative to natural scales)
+    K_LIM_FACTOR = 1.0  # |k| < K_LIM_FACTOR * x * E
+    Q_LIM_FACTOR = 6.0  # |q| < Q_LIM_FACTOR * mu
+
+    # ==============================================================================
+    #  Vegas integrand
+    # ==============================================================================
+    def make_batch_integrand(x, E, rho0, mu, alpha_s, z0):
+        """
+        Build a vegas batch integrand for dI^(1)/dx at fixed (x, E, rho0, mu, alpha_s).
+        Integration variables: (kx, ky, qx, qy, z).
+
+        Units:
+          kx, ky, qx, qy : GeV
+          z              : fm
+          mu             : GeV
+          rho0           : fm^-3
+
+        Returns the integrand value in fm^-1 (rho0 [fm^-3] × dz [fm] × momentum
+        measure [GeV^0 after cancellation]); we convert to dimensionless dI/dx
+        by multiplying by HBARC in the outer wrapper (one factor for the single
+        surviving fm^-1).
+        """
+        _mu2 = mu * mu
+
+        # Prefactor (without C_R — to be multiplied by the user)
+        # 9 * E / pi^2  *  alpha_s^3   (alpha_s from d^2k, alpha_s^2 from d^2q)
+        _prefactor = 9.0 * E / (np.pi ** 2) * alpha_s ** 3
+
+        # The cosine argument has units (GeV^2 · fm) / GeV = GeV·fm
+        # → divide by HBARC to make it dimensionless
+        _inv_2xE_hbarc = 1.0 / (2.0 * x * E * HBARC)
+
+        @vegas.batchintegrand
+        def integrand(pts):
+            kx = pts[:, 0]
+            ky = pts[:, 1]
+            qx = pts[:, 2]
+            qy = pts[:, 3]
+            z = pts[:, 4]
+
+            kk = kx * kx + ky * ky
+            qq = qx * qx + qy * qy
+            kq = kx * qx + ky * qy
+
+            kmqx = kx - qx
+            kmqy = ky - qy
+            kmq2 = kmqx * kmqx + kmqy * kmqy
+
+            # Numerical protection against integrable singularities
+            kk = np.maximum(kk, 1e-10)
+            kmq2 = np.maximum(kmq2, 1e-10)
+
+            # Scattering potential
+            v2 = 1.0 / (qq + _mu2) ** 2
+
+            # Kernel
+            kern = kq / (kk * kmq2)
+
+            # Formation-time oscillation
+            osc = 1.0 - np.cos(kmq2 * (z - z0) * _inv_2xE_hbarc)
+
+            # Multiply by 1/xE to yield number distribution
+            return (1/(x * E)) * _prefactor * rho0 * v2 * kern * osc
+
+        return integrand
+
+    # ==============================================================================
+    #  Top-level routine
+    # ==============================================================================
+    def dNdx(
+            x,
+            E=10.0,  # GeV
+            rho0=0.5,  # fm^-3
+            mu=0.5,  # GeV
+            alpha_s=0.3,
+            z0=0.0,  # fm
+            zf=5.0,  # fm
+            k_max=None,  # GeV; default K_LIM_FACTOR * x * E
+            q_max=None,  # GeV; default Q_LIM_FACTOR * mu
+            nitn_warmup=NITN_WARMUP,
+            nitn=NITN,
+            neval=NEVAL,
+            verbose=False,
+    ):
+        """
+        Compute dN^(1)/dx at gluon momentum fraction x using Vegas MC.
+
+        Returns
+        -------
+        (mean, sdev) : tuple of floats
+            Mean and standard deviation of dI/dx (without C_R; multiply
+            by 4/3 for quarks or 3 for gluons).
+        """
+        if k_max is None:
+            k_max = K_LIM_FACTOR * x * E
+        if q_max is None:
+            q_max = Q_LIM_FACTOR * mu
+
+        if k_max <= 0.0:
+            return 0.0, 0.0
+
+        # Integration region: full 2D transverse plane for k and q, plus z
+        region = [
+            (-k_max, k_max),  # kx
+            (-k_max, k_max),  # ky
+            (-q_max, q_max),  # qx
+            (-q_max, q_max),  # qy
+            (z0, zf),  # z
+        ]
+
+        integ = vegas.Integrator(region)
+        integrand = make_batch_integrand(x, E, rho0, mu, alpha_s, z0)
+
+        # Warm-up (adapts the Vegas grid)
+        integ(integrand, nitn=nitn_warmup, neval=neval)
+        # Production run
+        result = integ(integrand, nitn=nitn, neval=neval)
+
+        if verbose:
+            print(result.summary())
+
+        # Unit conversion:
+        #   d^2k [GeV^2] * d^2q [GeV^2] * v2 [GeV^-4] * kern [GeV^-2]
+        #     = GeV^-2
+        #   rho0 [GeV^3] * dz [fm]
+        #     = GeV^3 · fm
+        #   Combined: GeV^-2 · GeV^3 · fm = GeV · fm
+        #   → multiply by 1/HBARC [GeV^-1 fm^-1] (since hbar*c = 0.197 GeV·fm)
+        #   to get a dimensionless number.
+        conv = 1.0 / HBARC
+
+        return result.mean * conv, result.sdev * conv
+
+    t0 = time.time()
+    x_vals = np.logspace(-10, 0, 25)
+    int_vals = []
+    for x in x_vals:
+
+        mean, sdev = dNdx(
+            x, E=particle.E0, rho0=rho(particle, medium), mu=0.5, alpha_s=0.3,
+            z0=0.0, zf=5.0,
+        )
+        int_vals.append(mean)
+    dt = time.time() - t0
+    logging.debug(f"Gluon number integration complete in {dt:>8.2f}")
+    logging.warning("Needs conversion factor fix! Using E0, etc.")
+
+
+    return CR * np.trapezoid(y=int_vals, x=x_vals)
+
+
+def sample_rad_dist(rad_dist, kx_values, ky_values, kz_values, N_samples=1):
+    """
+    Function to sample radiation distribution for kx, ky, kz.
+    Treat dI/(dxdkxdky) as an (unnormalized) 3D probability density and draw N_samples points (kx, ky, kz) from it.
+    """
+
+    # Build a normalized flat PDF, then a CDF
+    I_flat = rad_dist.ravel()
+    I_flat_pos = np.clip(I_flat, 0, None)  # ensure non-negative
+    pdf = I_flat_pos / I_flat_pos.sum()  # normalize to sum to 1
+    cdf = np.cumsum(pdf)  # build CDF
+    cdf[-1] = 1.0  # Force exact upper bound — removes all floating point slop
+
+    # Draw uniform samples and find where they land in the CDF
+    uniform_samples = 1.0 - rng.uniform(size=N_samples)
+    flat_indices = np.searchsorted(cdf, uniform_samples, side="right")  # shape: (N_samples,)
+
+    # Convert flat indices back to 3D grid indices
+    ikx, iky, ikz = np.unravel_index(flat_indices, rad_dist.shape)
+
+    # Look up the corresponding coordinate values
+    sampled_kz = kz_values[ikz]
+    sampled_kx = kx_values[ikx]
+    sampled_ky = ky_values[iky]
+
+    # Stack values
+    emission_momentum = np.column_stack([sampled_kx, sampled_ky, sampled_kz])
+
+    if N_samples == 1:
+        return np.reshape(emission_momentum, 3)
+    else:
+        return emission_momentum

@@ -6,6 +6,7 @@ from typing_extensions import NoDefault
 import plasma
 import hard_particles
 import plasma_interaction
+import plasma_interaction as pi
 import config
 from plasma_interaction import NoMedium
 import utilities
@@ -42,6 +43,8 @@ def evolve_particle(particle : hard_particles.Particle, plasma_object : plasma.p
 
         # Construct zeroed radiation distribution array
         rad_dist = np.zeros(shape=(kperp_points, kperp_points, kz_points))
+        total_number = 0
+        total_energy = 0
 
     #########################
     # Perform the evolution #
@@ -96,10 +99,11 @@ def evolve_particle(particle : hard_particles.Particle, plasma_object : plasma.p
                 try:
                     if config.jet.RAD_MODEL == "aniso_NN":
                         t0 = time.time()
+
                         emission_momenta = []
 
                         # Compute radiation distribution from this step -- returned in (kx, ky, kz) in parton frame
-                        dtau_rad_dist = plasma_interaction.aniso_rad_dist(particle=particle, medium=plasma_object, dtau=dtau,
+                        dtau_rad_dist = pi.aniso_rad_dist(particle=particle, medium=plasma_object, dtau=dtau,
                                                                           kx_values=k_values, ky_values=k_values,
                                                                           kz_values=k_values, nn=nn)
 
@@ -116,7 +120,7 @@ def evolve_particle(particle : hard_particles.Particle, plasma_object : plasma.p
                         # We do this with an image processing interpolation. The coordinates of the new grid are the same
                         # k_values, ky_values, and kz_values arrays -- we just understand them to be in the lab frame.
                         # """
-                        # dtau_rad_dist = plasma_interaction.rotate_rad_dist(particle=particle, medium=plasma_object,
+                        # dtau_rad_dist = pi.rotate_rad_dist(particle=particle, medium=plasma_object,
                         #                                                    rad_dist=dtau_rad_dist,
                         #                                                    kx_values=k_values,
                         #                                                    ky_values=k_values,
@@ -131,30 +135,43 @@ def evolve_particle(particle : hard_particles.Particle, plasma_object : plasma.p
                         # Compute integral of complete radiation distribution
                         # (np.trapezoid handles integration of arbitrary spacing via coordinates)
                         t0 = time.time()
-                        total_integral = np.trapezoid(
-                            np.trapezoid(
-                                np.trapezoid(rad_dist, k_values, axis=2),  # Integrate over kz -> shape: (n_kx, n_ky)
-                                                      k_values, axis=1),  # Integrate over ky -> shape: (n_kx)
-                                                      k_values, axis=0)  # Integrate over kx -> scalar
+                        fixed_gluons = True
+                        if fixed_gluons:
+                            """!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"""
+                            # Fix analytic expectation for gluon emissions per step
+                            total_number += pi.N_gluons(particle=particle, medium=plasma_object, dtau=dtau)
+                            total_energy += pi.E_gluons(particle=particle, medium=plasma_object, dtau=dtau)
+                            """!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"""
+                        else:
+                            total_number += np.trapezoid(
+                                np.trapezoid(
+                                    np.trapezoid(dtau_rad_dist, k_values, axis=2),  # Integrate over kz -> shape: (n_kx, n_ky)
+                                                          k_values, axis=1),  # Integrate over ky -> shape: (n_kx)
+                                                          k_values, axis=0)  # Integrate over kx -> scalar
+                            total_energy = np.trapezoid(
+                                np.trapezoid(
+                                    np.trapezoid(rad_dist * x_values * particle.E0, k_values, axis=2),  # Integrate over kz -> shape: (n_kx, n_ky)
+                                                          k_values, axis=1),  # Integrate over ky -> shape: (n_kx)
+                                                          k_values, axis=0)  # Integrate over kx -> scalar
 
                         # Check if we should emit a particle
                         N_norm = 1
-                        logging.debug(f"Radiation integral: {total_integral}")
-                        current_integral = total_integral
+                        logging.debug(f"Radiation integral: {total_number}")
+                        current_integral = total_number
                         n = 0
-                        """!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"""
-                        current_integral = N_norm  # Fix exactly one gluon emission per step
-                        """!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"""
                         while current_integral >= N_norm:
                             n += 1
                             # Sample the distribution for emission kinematics in the radiation frame
-                            k = utilities.sample_rad_dist(rad_dist, N_samples=1,
-                                                          kx_values=k_values, ky_values=k_values, kz_values=k_values)
-                            k = plasma_interaction.lf_emission_momentum(k=k, particle=particle, medium=plasma_object)
+                            k = plasma_interaction.sample_rad_dist(rad_dist, N_samples=1,
+                                                                   kx_values=k_values, ky_values=k_values, kz_values=k_values)
+                            k = pi.lf_emission_momentum(k=k, particle=particle, medium=plasma_object)
 
                             # Transform emission momentum to lab frame
                             logging.debug(f"Emitting gluon, k = {k} GeV, parton p = {particle.p3}")
 
+                            # Check if gluon is backward facing -- This shouldn't happen from a single step's radiation,
+                            # but summing the distribution over multiple steps "turns" the coordinate system such that
+                            # it has a nonzero total probability
                             pdotk = np.dot(particle.p3, k) / (np.linalg.norm(particle.p3) * np.linalg.norm(k))
                             logging.debug(f"k.p / (|k||p|)= {pdotk}")
                             if pdotk < 0.0:
@@ -170,43 +187,45 @@ def evolve_particle(particle : hard_particles.Particle, plasma_object : plasma.p
 
                         # Get number distribution scaled to number that we emitted
                         # Rescale distribution, removing "n gluons" of emission probability
-                        if np.abs(total_integral) > 0.0:
-                            emitted_dist = ((n * N_norm) / total_integral) * rad_dist
-                            rad_dist = ((total_integral - n * N_norm) / total_integral) * rad_dist
+                        if np.abs(total_number) > 0.0:
+                            emitted_dist = ((n * N_norm) / total_number) * rad_dist
+                            rad_dist = ((total_number - n * N_norm) / total_number) * rad_dist
                         else:
                             emitted_dist = np.zeros_like(rad_dist)
                             rad_dist = rad_dist
 
-                        # Find expected energy of emitted gluons -- integral of distribution times energy
-                        # (np.trapezoid handles integration of arbitrary spacing via coordinates)
-                        expected_E = np.trapezoid(
-                            np.trapezoid(
-                                np.trapezoid(emitted_dist*E_values, k_values, axis=2),  # Int kz -> shape: (n_kx, n_ky)
-                                k_values, axis=1),  # Integrate over ky -> shape: (n_kx)
-                            k_values, axis=0)  # Integrate over kx -> scalar
-                        logging.debug(f"Expected energy of emitted gluons: {expected_E} GeV")
-
-                        """!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"""
-                        if expected_E < 0.0:
-                            logging.warning("Expected energy of emitted gluons is negative. Not good!")
-                            expected_E = abs(expected_E)
-                        """!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"""
-
-
-                        if np.abs(total_integral) > 0.0:
-                            rad_dist = ((total_integral - n*N_norm) / total_integral) * rad_dist
-                        else:
-                            rad_dist = rad_dist
-
-                        # Rescale momentum of emissions to match expected energy
-                        sampled_E = np.linalg.norm(np.sum(emission_momenta, axis=0))
-                        for i in np.arange(len(emission_momenta)):
-                            emission_momenta[i] = ((expected_E / sampled_E) * np.array(emission_momenta[i]))
 
                         if n == 0:
                             # No emission, so set radiation momentum to zero
                             total_k = np.array([0, 0, 0])
                         else:
+                            # Compute expected energy of emitted gluons
+                            if fixed_gluons:
+                                # Use analytic expectation and reset counter
+                                expected_E = total_energy
+                                total_energy = 0
+                            else:
+                                # Find expected energy of emitted gluons -- integral of distribution times energy
+                                # (np.trapezoid handles integration of arbitrary spacing via coordinates)
+                                expected_E = np.trapezoid(
+                                    np.trapezoid(
+                                        np.trapezoid(emitted_dist * E_values, k_values, axis=2),
+                                        # Int kz -> shape: (n_kx, n_ky)
+                                        k_values, axis=1),  # Integrate over ky -> shape: (n_kx)
+                                    k_values, axis=0)  # Integrate over kx -> scalar
+                                logging.debug(f"Expected energy of emitted gluons: {expected_E} GeV")
+
+                            # # Fix any negative energies
+                            # """!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"""
+                            # if expected_E < 0.0:
+                            #     logging.warning("Expected energy of emitted gluons is negative. Not good!")
+                            #     expected_E = abs(expected_E)
+                            # """!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"""
+
+                            # Rescale momentum of emissions to match expected energy
+                            sampled_E = np.linalg.norm(np.sum(emission_momenta, axis=0))
+                            for i in np.arange(len(emission_momenta)):
+                                emission_momenta[i] = ((expected_E / sampled_E) * np.array(emission_momenta[i]))
                             # Sum emission momenta from this step
                             total_k = np.sum(emission_momenta, axis=0)
 
@@ -222,11 +241,11 @@ def evolve_particle(particle : hard_particles.Particle, plasma_object : plasma.p
 
 
                     elif config.jet.RAD_MODEL == "iso_analytic":
-                        rad_delta = plasma_interaction.rad_delta(particle, plasma_object, dtau)
+                        rad_delta = pi.rad_delta(particle, plasma_object, dtau)
                     else:
                         logging.error("Unknown RAD_MODEL, defaulting to iso_analytic")
-                        rad_delta = plasma_interaction.rad_delta(particle, plasma_object, dtau)
-                except plasma_interaction.HadronGas:
+                        rad_delta = pi.rad_delta(particle, plasma_object, dtau)
+                except pi.HadronGas:
                     logging.debug("Particle escaped plasma.")
                     break
                 except NoMedium:
@@ -243,11 +262,11 @@ def evolve_particle(particle : hard_particles.Particle, plasma_object : plasma.p
                 # Collisional #
                 ###############
                 try:
-                    coll_delta = plasma_interaction.collisional_delta(particle, plasma_object, dtau)
+                    coll_delta = pi.collisional_delta(particle, plasma_object, dtau)
                     # # Use linear gradients for collisional interaction
                     # coll_delta = plasma_interaction.collisional_delta_linear_gradients(particle, plasma_object, dtau)
 
-                except plasma_interaction.HadronGas:
+                except pi.HadronGas:
                     logging.debug("Particle escaped plasma.")
                     break
                 except NoMedium:
@@ -272,8 +291,11 @@ def evolve_particle(particle : hard_particles.Particle, plasma_object : plasma.p
                 particle.apply_deltap(rad_delta)
 
                 # Set emission coordinates for this step to the position AFTER propagation, right where momentum changes
-                for i in np.arange(len(emission_momenta)):
-                    emission_coords_total.append(particle.coords)
+                try:
+                    for i in np.arange(len(emission_momenta)):
+                        emission_coords_total.append(particle.coords)
+                except:
+                    pass
 
             # Freestream any remaining evolution time
             if steps_complete < num_steps:
@@ -283,7 +305,7 @@ def evolve_particle(particle : hard_particles.Particle, plasma_object : plasma.p
 
             # Notify of remaining radiation potential
             try:
-                logging.debug(f"{(total_integral - n*N_norm)} unradiated gluons remaining")
+                logging.debug(f"{(total_number - n*N_norm)} unradiated gluons remaining")
             except:
                 pass
 
