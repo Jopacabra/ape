@@ -273,7 +273,7 @@ def treat_particle(particle, medium):
     # Perform the evolution #
     #########################
     pT0 = particle.pT
-    emission_momenta, emission_coords, evolution_complete = parton_evolution.evolve_particle(particle, medium, _nn)
+    emission_momenta, emission_coords, evolution_complete = parton_evolution.evolve_particle(particle, medium, _nn, rng=_rng)
     pTF = particle.pT
     logging.debug(f"pT0: {pT0}, delta pT: {pTF - pT0} GeV")
 

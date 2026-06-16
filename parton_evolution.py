@@ -23,7 +23,8 @@ plasma.
 Returns a list of emmitted particle momenta, plus
 True if the particle was evolved the full tau window requested or false if it was not.
 """
-def evolve_particle(particle : hard_particles.Particle, plasma_object : plasma.plasma, nn=None, tau=None):
+def evolve_particle(particle : hard_particles.Particle, plasma_object : plasma.plasma, nn=None,
+                    rng=np.random.default_rng(), tau=None):
     # Create list of emitted particles to be tracked later
     emission_momenta_total = []
     emission_coords_total = []
@@ -33,7 +34,8 @@ def evolve_particle(particle : hard_particles.Particle, plasma_object : plasma.p
         x_min = -2  # minimum power of 10 in x to compute
         kz_points = 50  # Number of evenly spaced points in x to compute
         kperp_points = 50  # Even number of lin-spaced points in kx and ky to compute
-        k_pos_values = np.logspace(x_min, -0.05, kperp_points//2)*particle.E0
+        x_values = np.logspace(x_min, -0.05, kperp_points//2)
+        k_pos_values = x_values*particle.E0
         # k_pos_values = np.linspace(0.01, 1, kperp_points // 2)*particle.E0
         k_values = np.concatenate((-k_pos_values, k_pos_values))
 
