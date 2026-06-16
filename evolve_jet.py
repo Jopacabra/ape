@@ -184,22 +184,17 @@ logging.info('Soft event created.')
 # Hard Event Evolution #
 ########################
 # Global variables that will be filled on a per-worker basis
-_medium = None
 _rng = None
 _nn = None
-hydro_filepath = event_type
 
 # Particle evolution worker initializer
-def _worker_init(hydro_filepath, child_seeds, worker_counter, worker_counter_lock):
-    global _medium, _rng, _nn
+def _worker_init(child_seeds, worker_counter, worker_counter_lock):
+    global _rng, _nn
 
     # Assign a guaranteed-unique worker index using a shared atomic counter
     with worker_counter_lock:
         worker_id = worker_counter.value
         worker_counter.value += 1
-
-    # Reconstruct medium -- does not include the medium metadata, which is unneeded for the evolution.
-    _medium = plasma_object = plasma.plasma_event(hydro_file_path=hydro_filepath)
 
     # Get an RNG for this worker
     # worker_id = os.getpid() % len(child_seeds)
@@ -230,13 +225,13 @@ def _worker_init(hydro_filepath, child_seeds, worker_counter, worker_counter_loc
     else:
         _nn = None
 
-def treat_particle(particle):
+def treat_particle(particle, medium):
     """
     1. Check whether to evolve a particle
     2. Evolve if necessary
     3. Return modified particle and lists of emission momenta and emission coordinates
     """
-    global _medium, _rng, _nn
+    global _rng, _nn
     logging.debug('Particle {}...'.format(particle.printout()))
 
     #####################################
@@ -259,7 +254,7 @@ def treat_particle(particle):
     # Perform the evolution #
     #########################
     pT0 = particle.pT
-    emission_momenta, emission_coords, evolution_complete = parton_evolution.evolve_particle(particle, _medium, _nn)
+    emission_momenta, emission_coords, evolution_complete = parton_evolution.evolve_particle(particle, medium, _nn)
     pTF = particle.pT
     logging.debug(f"pT0: {pT0}, delta pT: {pTF - pT0} GeV")
 
@@ -340,11 +335,11 @@ try:
             round_particles = hard_event.particles[passed_particles:]
             with ProcessPoolExecutor(max_workers=max_workers,
                                      initializer=_worker_init,
-                                     initargs=(hydro_filepath, child_seeds, worker_counter,
+                                     initargs=(child_seeds, worker_counter,
                                                worker_counter_lock)) as executor:
 
                 # Process particles in parallel
-                futures = {executor.submit(treat_particle, p): p for p in round_particles}
+                futures = {executor.submit(treat_particle, p, plasma_object): p for p in round_particles}
 
                 # As they complete, spawn appropriate child particles
 
