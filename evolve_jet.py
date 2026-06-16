@@ -163,7 +163,6 @@ else:
     try:
         # Load hydro data
         logging.info(f"Loading Plasma from {event_type}...")
-        plasma_file = plasma.osu_hydro_file(event_type)
 
         # Load event metadata
         try:
@@ -173,7 +172,7 @@ else:
             logging.error("No metadata found for this event.")
             soft_dict = {}
 
-        plasma_object = plasma.plasma_event(hydro_object=plasma_file, meta=soft_dict)
+        plasma_object = plasma.plasma_event(hydro_file_path=event_type)
     except:
         logging.error("Invalid event type or path.")
         raise ValueError("Invalid event type.")
@@ -200,8 +199,7 @@ def _worker_init(hydro_filepath, child_seeds, worker_counter, worker_counter_loc
         worker_counter.value += 1
 
     # Reconstruct medium -- does not include the medium metadata, which is unneeded for the evolution.
-    plasma_file = plasma.osu_hydro_file(hydro_filepath)
-    _medium = plasma.plasma_event(hydro_object=plasma_file)
+    _medium = plasma_object = plasma.plasma_event(hydro_file_path=hydro_filepath)
 
     # Get an RNG for this worker
     # worker_id = os.getpid() % len(child_seeds)
@@ -339,14 +337,14 @@ try:
             Perform the evolution on each particle
             """
             logging.info(f'Evolving particles, round {round_no}...')
-            round_parts = hard_event.particles[passed_particles:]
+            round_particles = hard_event.particles[passed_particles:]
             with ProcessPoolExecutor(max_workers=max_workers,
                                      initializer=_worker_init,
                                      initargs=(hydro_filepath, child_seeds, worker_counter,
                                                worker_counter_lock)) as executor:
 
                 # Process particles in parallel
-                futures = {executor.submit(treat_particle, p): p for p in round_parts}
+                futures = {executor.submit(treat_particle, p): p for p in round_particles}
 
                 # As they complete, spawn appropriate child particles
 
@@ -363,7 +361,7 @@ try:
                             hard_event.spawn_radiation(modified_particle.tag, emission_momenta[i], emission_coords[i])
                     else:
                         pass
-            passed_particles += len(round_parts)
+            passed_particles += len(round_particles)
 
             logging.info(f'Evolution round {round_no} complete.')
             if passed_particles == len(hard_event.particles):

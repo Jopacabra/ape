@@ -691,11 +691,10 @@ def temp_6th_sample(event, maxAttempts=5, time='i', batch=1000, seed=None):
     temp_func = event.temp
 
     # Set time
-    np.amin(temp_func.grid[0])
     if time == 'i':
-        time = np.amin(temp_func.grid[0])
+        time = np.amin(event.t0)
     elif time == 'f':
-        time = np.amax(temp_func.grid[0])
+        time = np.amax(event.tf)
     else:
         pass
 
@@ -703,8 +702,8 @@ def temp_6th_sample(event, maxAttempts=5, time='i', batch=1000, seed=None):
     maxTemp = event.max_temp(time=time)
 
     # Find grid bounds
-    gridMin = np.amin(temp_func.grid[1])
-    gridMax = np.amax(temp_func.grid[1])
+    gridMin = np.amin(event._xspace)
+    gridMax = np.amax(event._xspace)
     gridWidth = gridMax - gridMin
 
     attempt = 0
