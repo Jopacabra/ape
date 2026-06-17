@@ -432,7 +432,10 @@ try:
         max_rad_gens = 1  # Maximum number of emissions from a single hard particle lineage
 
         # Try to get max workers of Slurm environment variable, else use number of cores read by os.cpu
-        max_workers = int(os.environ.get("SLURM_CPUS_PER_TASK", os.cpu_count()))
+        if config.mode.MAX_WORKERS > 0:
+            max_workers = config.mode.MAX_WORKERS
+        else:
+            max_workers = int(os.environ.get("SLURM_CPUS_PER_TASK", os.cpu_count()))
         seed_sequence = np.random.SeedSequence()
         child_seeds = seed_sequence.spawn(max_workers)  # One per worker
 
