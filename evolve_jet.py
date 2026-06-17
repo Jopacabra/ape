@@ -158,14 +158,16 @@ elif event_type == "Duke_avg":
     # Note that we need write permissions in the working directory
     plasma_object = collision.generate_event(working_dir=event_dir, IC_type="Duke_avg", seed=seed)
 
-# Create a slab of flowing plasma with flow pointing in the positive x direction
-elif event_type == "slab":
+# Create a brick of static plasma
+elif event_type == "brick":
     logging.info("Generating x-direction slab...")
+    T = 0.5
+    rmax = 10
 
     def temp_func(t, x, y, etas):
-        return 0.4
+        return np.where(np.sqrt(x ** 2 + y ** 2) < rmax, T, 0.0)
     def x_vel_func(t, x, y, etas):
-        return 0.7
+        return 0.0
     def y_vel_func(t, x, y, etas):
         return 0.0
     def z_vel_func(t, x, y, etas):
@@ -175,7 +177,99 @@ elif event_type == "slab":
                                                   x_vel_func=x_vel_func,
                                                   y_vel_func=y_vel_func,
                                                   z_vel_func=z_vel_func,
-                                                  name=None, resolution=10, xmax=10, time=10, tau0=0.5)
+                                                  name=None, resolution=10, xmax=1.5*rmax, time=1.5*rmax, tau0=0.5)
+
+# Create a slab of flowing plasma with flow pointing in the positive x direction
+elif event_type == "slab":
+    logging.info("Generating x-direction slab...")
+    T = 0.4
+    u = 0.7
+    rmax = 7.5
+
+    def temp_func(t, x, y, etas):
+        return np.where(np.sqrt(x ** 2 + y ** 2) < rmax, T, 0.0)
+    def x_vel_func(t, x, y, etas):
+        return np.where(np.sqrt(x ** 2 + y ** 2) < rmax, u, 0.0)
+    def y_vel_func(t, x, y, etas):
+        return 0.0
+    def z_vel_func(t, x, y, etas):
+        return 0.0
+
+    plasma_object = plasma.functional_plasma_3_1D(temp_func=temp_func,
+                                                  x_vel_func=x_vel_func,
+                                                  y_vel_func=y_vel_func,
+                                                  z_vel_func=z_vel_func,
+                                                  name=None, resolution=10, xmax=1.5*rmax, time=1.5*rmax, tau0=0.5)
+
+# Create a slab of flowing plasma with flow and flow gradient in positive x dir.
+elif event_type == "flowgradslab":
+    logging.info("Generating x-direction slab...")
+    T = 0.4
+    u = 0.7
+    gradu = 0.05
+    rmax = 7.5
+
+    def temp_func(t, x, y, etas):
+        return np.where(np.sqrt(x ** 2 + y ** 2) < rmax, T, 0.0)
+    def x_vel_func(t, x, y, etas):
+        return np.where(np.sqrt(x ** 2 + y ** 2) < rmax, u + gradu*x, 0.0)
+    def y_vel_func(t, x, y, etas):
+        return np.where(np.sqrt(x ** 2 + y ** 2) < rmax, gradu*x, 0.0)
+    def z_vel_func(t, x, y, etas):
+        return np.where(np.sqrt(x ** 2 + y ** 2) < rmax, gradu*x, 0.0)
+
+    plasma_object = plasma.functional_plasma_3_1D(temp_func=temp_func,
+                                                  x_vel_func=x_vel_func,
+                                                  y_vel_func=y_vel_func,
+                                                  z_vel_func=z_vel_func,
+                                                  name=None, resolution=10, xmax=1.5*rmax, time=1.5*rmax, tau0=0.5)
+
+# Create a slab of flowing plasma with flow and T grad pointing in pos. x dir
+elif event_type == "tempgradslab":
+    logging.info("Generating x-direction slab...")
+    T = 0.4
+    gradT = 0.05
+    u = 0.7
+    rmax = 7.5
+
+    def temp_func(t, x, y, etas):
+        return np.where(np.sqrt(x ** 2 + y ** 2) < rmax, T + gradT*x, 0.0)
+    def x_vel_func(t, x, y, etas):
+        return np.where(np.sqrt(x ** 2 + y ** 2) < rmax, u, 0.0)
+    def y_vel_func(t, x, y, etas):
+        return 0.0
+    def z_vel_func(t, x, y, etas):
+        return 0.0
+
+    plasma_object = plasma.functional_plasma_3_1D(temp_func=temp_func,
+                                                  x_vel_func=x_vel_func,
+                                                  y_vel_func=y_vel_func,
+                                                  z_vel_func=z_vel_func,
+                                                  name=None, resolution=10, xmax=1.5*rmax, time=1.5*rmax, tau0=0.5)
+
+# Create a slab of flowing plasma with flow, flow grad, and T grad pointing in pos. x dir
+elif event_type == "fullgradslab":
+    logging.info("Generating x-direction slab...")
+    T = 0.25
+    gradT = 0.05
+    u = 0.9
+    gradu = -0.05
+    rmax = 7.5
+
+    def temp_func(t, x, y, etas):
+        return np.where(np.sqrt(x ** 2 + y ** 2) < rmax, T + gradT*x, 0.0)
+    def x_vel_func(t, x, y, etas):
+        return np.where(np.sqrt(x ** 2 + y ** 2) < rmax, u + gradu * x, 0.0)
+    def y_vel_func(t, x, y, etas):
+        return np.where(np.sqrt(x ** 2 + y ** 2) < rmax, gradu * x, 0.0)
+    def z_vel_func(t, x, y, etas):
+        return np.where(np.sqrt(x ** 2 + y ** 2) < rmax, gradu * x, 0.0)
+
+    plasma_object = plasma.functional_plasma_3_1D(temp_func=temp_func,
+                                                  x_vel_func=x_vel_func,
+                                                  y_vel_func=y_vel_func,
+                                                  z_vel_func=z_vel_func,
+                                                  name=None, resolution=10, xmax=1.5*rmax, time=1.5*rmax, tau0=0.5)
 
 # Load a saved Duke event
 else:
