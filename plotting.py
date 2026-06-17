@@ -123,7 +123,7 @@ def plot_trajectories(hard_event : hard_particles.EventRecord, *, z_axis: str = 
     ax.set_title(title)
 
     if not any_plotted:
-        ax.text2D(0.05, 0.95, "No trajectories to plot (empty history).", transform=ax.transAxes)
+        ax.text(0.05, 0.95, "No trajectories to plot (empty history).", transform=ax.transAxes)
 
     if color_by == "id" and len(id_to_color) <= 12:
 
@@ -256,7 +256,7 @@ def plot_parton_hadron(hard_event : hard_particles.EventRecord, hadrons : pythia
         # axis.set_title(title)
 
         if not any_plotted:
-            axis.text2D(0.05, 0.95, "No trajectories to plot (empty history).", transform=axis.transAxes)
+            axis.text(0.05, 0.95, "No trajectories to plot.", transform=axis.transAxes)
 
         if len(id_to_color) <= 12:
             handles = [
@@ -287,7 +287,11 @@ def plot_parton_hadron(hard_event : hard_particles.EventRecord, hadrons : pythia
 
         phi_bins = np.linspace(0.0, 2 * np.pi, N, endpoint=False)
         counts, _ = np.histogram(phi_array, bins=phi_bins, weights=weight_array)
-        radii = (max_height / np.amax(counts)) * counts
+        max_counts = np.amax(counts)
+        if max_counts > 0:
+            radii = (max_height / max_counts) * counts
+        else:
+            radii = np.zeros(counts.shape)
         width = (2 * np.pi) / N
 
         paxis = fig.add_axes(111, polar=True, frameon=False)
