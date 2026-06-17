@@ -425,7 +425,7 @@ def generate_event(grid_max_target=config.soft_transport.all.GRID_MAX, grid_step
     if IC_type == 'Duke':
         # Decide where to locate the initial conditions file
         if working_dir is not None:
-            trento_ic_path = os.path.join(working_dir, '/initial.hdf')
+            trento_ic_path = os.path.join(working_dir, 'initial.hdf')
         else:
             trento_ic_path = 'initial.hdf'
 
