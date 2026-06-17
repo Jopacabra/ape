@@ -293,15 +293,20 @@ def collisional_delta(particle: hard_particles.Particle, medium: plasma.plasma, 
     # Get perp and parallel medium flow velocity
     uperp = utilities.perp_vec(a=u, b=p)
     upar = utilities.par_vec(a=u, b=p)
+    upar_scalar = np.sign(np.dot(upar, p)) * np.linalg.norm(upar)
 
     # Get pathlength traveled
     delta_t, delta_x, delta_y, delta_z = particle.next_pathlength(dtau, cart=True)
     pathlength = np.sqrt(delta_x**2 + delta_y**2 + delta_z**2)
 
     # Compute flow-induced broadening, add to momentum transfer.
-    drift = drift_integrand(T=temp, u_perp=np.linalg.norm(uperp), u_par=np.linalg.norm(upar),
+    drift = drift_integrand(T=temp, u_perp=np.linalg.norm(uperp), u_par=upar_scalar,
                                                E=particle.E, hard_pid=particle.id) * pathlength
-    uperp_hat = uperp / np.linalg.norm(uperp)  # Unit vector in direction of u_perp
+    uperp_mag = np.linalg.norm(uperp)
+    if uperp_mag > 0.0:
+        uperp_hat = uperp / uperp_mag  # Unit vector in direction of u_perp
+    else:
+        uperp_hat = np.array([0, 0, 0])
     drift_vec = drift * uperp_hat
 
     dpx += float(drift_vec[0])
@@ -450,7 +455,7 @@ def aniso_rad_dist(particle: hard_particles.Particle, medium: plasma.plasma,
     elif temp < config.jet.T_HRG:  # Cancel evolution if we exit the plasma phase
         raise HadronGas()
     u = np.array([float(medium.x_vel(point)[0]), float(medium.y_vel(point)[0]), float(medium.z_vel(point))])
-    uperp = utilities.perp_vec(a=u, b=p)
+    uperp = np.linalg.norm(utilities.perp_vec(a=u, b=p))
 
     # Get pathlength traveled in this step
     delta_t, delta_x, delta_y, delta_z = particle.next_pathlength(dtau, cart=True)
@@ -467,7 +472,7 @@ def aniso_rad_dist(particle: hard_particles.Particle, medium: plasma.plasma,
         logging.warning("Particle pathlength is outside of training domain! Good luck!")
     if temp > 0.650 or temp < 0.150:
         logging.warning("Temperature is outside of training domain! Good luck!")
-    if np.linalg.norm(uperp) > 0.9 or np.linalg.norm(uperp) < 0.0:
+    if uperp > 0.9 or uperp < 0.0:
         logging.warning("Perp. velocity is outside of training domain! Good luck!")
 
     # Compute number distribution of radiation generated in this step
@@ -475,7 +480,7 @@ def aniso_rad_dist(particle: hard_particles.Particle, medium: plasma.plasma,
         E=particle.E0,  # Use E0 to avoid rescaling the meaning of x between steps
         z0=particle.tau / hbarc,  # tau is in fm, need to give to NN in GeV^{-1}
         zf=(particle.tau + delta_pathlength) / hbarc,  # tau & dtau are in fm, need to give to NN in GeV^{-1}
-        u_perp=np.linalg.norm(uperp),
+        u_perp=uperp,
         T=temp,
         g=config.constants.G,
         kx_values=kx_values,
@@ -501,11 +506,17 @@ def lf_emission_momentum(k: np.ndarray, particle, medium: plasma.plasma):
     point = particle.coords
     u = np.array([float(medium.x_vel(point)[0]), float(medium.y_vel(point)[0]), float(medium.z_vel(point))])
     uperp = perp_vec(a=u, b=p)
+    uperp_mag = np.linalg.norm(uperp)
 
     # By construction, the gluon kinematics correspond to:
     k_z_hat = p / np.linalg.norm(p)  # Direction of k_z is parallel to the hard particle
-    k_x_hat = uperp / np.linalg.norm(uperp)  # Direction of k_x is parallel to the transverse flow
-    k_y_hat = np.cross(k_z_hat, k_x_hat)  # Direction of k_y is perp to both of the above, k_x x k_y = k_z, permute to k_z x k_x = k_y
+    if uperp_mag > 0.0:
+        k_x_hat = uperp / uperp_mag  # Direction of k_x is parallel to the transverse flow
+        k_y_hat = np.cross(k_z_hat, k_x_hat)  # Direction of k_y is perp to both of the above, k_x x k_y = k_z, permute to k_z x k_x = k_y
+    else:
+        # Direction of transverse flow uncertain... Orthonormal basis perp to k_z_hat, spectrum should be symmetric.
+        logging.warning("Exactly zero uperp. Radiation using default orthonormal basis.")
+        k_x_hat, k_y_hat = utilities.transverse_basis(k_z_hat)
 
     # Return transformed momentum 3-vector
     return np.array(k[0]*k_x_hat + k[1]*k_y_hat + k[2]*k_z_hat)
