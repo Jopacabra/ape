@@ -355,8 +355,8 @@ def run_hydro(fs, event_size, grid_step=0.1, tau_fs=0.5, eswitch=0.110, coarse: 
 # Function to generate a new HIC event and dump the files in the current working directory.
 def generate_event(grid_max_target=config.soft_transport.all.GRID_MAX, grid_step=config.soft_transport.all.GRID_STEP,
                    time_step=config.soft_transport.all.TIME_STEP, tau_fs=config.soft_transport.all.TAU_FS,
-                   t_end=config.soft_transport.hydro.T_SWITCH, seed=None, working_dir=None,
-                   IC_type='Duke', bmin=None, bmax=None):
+                   t_end=config.soft_transport.hydro.T_SWITCH, seed=config.mode.SEED, working_dir=None,
+                   IC_type='Duke', bmin=config.soft_transport.trento.BMIN, bmax=config.soft_transport.trento.BMAX):
 
     if working_dir is not None:
         og_dir = os.getcwd()
