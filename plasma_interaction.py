@@ -637,7 +637,7 @@ def E_gluons(particle: hard_particles.Particle, medium: plasma.plasma, dtau: flo
     L = (L0 + L0 + intdz) / 2  # Average pathlength in plasma of step, preventing 0.
     mu = mu_DeBye(T=temp)
 
-    return (E * (2 * CR * ALPHAS/np.pi) * intdz * (mu ** 2) * inv_lambda(T=temp, hard_pid=particle.id)
+    return ((2 * CR * ALPHAS/np.pi) * intdz * (mu ** 2) * inv_lambda(T=temp, hard_pid=particle.id)
             * L * np.log(E / mu))
 
 
