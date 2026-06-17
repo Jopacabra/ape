@@ -112,6 +112,12 @@ def plot_trajectories(hard_event : hard_particles.EventRecord, *, z_axis: str = 
         else:
             ax.plot(x, y, z, lw=1.5, alpha=0.9, color=color)
             ax.set_zlabel(z_label)
+
+            ax.plot(x[0], y[0], z[0], lw=0, marker="o", markersize=4, alpha=0.9, color="k")
+
+            if p.thermalized:
+                # Plot thermalization mark
+                ax.plot(x[-1], y[-1], z[-1], "x", fillstyle="none", markersize=12, alpha=0.9, color=color)
         any_plotted = True
 
     ax.set_xlabel("x [fm]")
@@ -230,11 +236,12 @@ def plot_parton_hadron(hard_event : hard_particles.EventRecord, hadrons : pythia
             color = id_to_color.get(pid, None)
 
             axis.plot(x, y, lw=1.5, alpha=0.9, color=color)
+            axis.plot(x[0], y[0], lw=0, marker="o", markersize=4, alpha=0.9, color="k")
             any_plotted = True
 
             if p.thermalized:
                 # Plot thermalization mark
-                axis.plot(x[-1], y[-1], "x", fillstyle="none", markersize=8, alpha=0.9, color=color)
+                axis.plot(x[-1], y[-1], "x", fillstyle="none", markersize=12, alpha=0.9, color=color, zorder=2.9)
 
             # Get momentum info and compute azimuthal position of detector interaction
             px = p.px
@@ -256,7 +263,7 @@ def plot_parton_hadron(hard_event : hard_particles.EventRecord, hadrons : pythia
         # axis.set_title(title)
 
         if not any_plotted:
-            axis.text(0.05, 0.95, "No trajectories to plot.", transform=axis.transAxes)
+            axis.text(0, 0, "No trajectories to plot.", transform=axis.transAxes)
 
         if len(id_to_color) <= 12:
             handles = [
