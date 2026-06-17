@@ -44,6 +44,8 @@ jet:  # Parameters for the jet production processes to be run
         PTHATMAX: 100  # [GeV] Maximum pTHat for jet production hard scatterings ~ max initial pT of jets
         RAP_MIN: 0.0  # Minimum absolute value of rapidity for hard scattering plane.
         RAP_MAX: 0.5  # Maximum absolute value of rapidity for hard scattering plane.
+        BOOST_MIN: 0.0  # Minimum absolute value of rapidity for hard process boost.
+        BOOST_MAX: 0.5  # Maximum absolute value of rapidity for hard process boost.
         BIAS_POWER:  4  # Power of the bias function for hard scattering pThat
         SHOWER: True  # If True, take Pythia vacuum jets. If False, take only hard scattering process particles.
     TAU_PROD: 0.01  # [fm] > 0, Choose when hard process occurs -- hard partons freestream until hydro initialization

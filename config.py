@@ -104,6 +104,8 @@ class jet:
         SHOWER = bool(cfg['jet']['pythia']['SHOWER'])
         RAP_MIN = float(cfg['jet']['pythia']['RAP_MIN'])
         RAP_MAX = float(cfg['jet']['pythia']['RAP_MAX'])
+        BOOST_MIN = float(cfg['jet']['pythia']['BOOST_MIN'])
+        BOOST_MAX = float(cfg['jet']['pythia']['BOOST_MAX'])
     DTAU = float(cfg['jet']['DTAU'])
     T_HRG = float(cfg['jet']['T_HRG'])
     K_F_DRIFT = float(cfg['jet']['K_F_DRIFT'])

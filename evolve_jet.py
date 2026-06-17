@@ -34,7 +34,7 @@ import utilities
 # Visualization options
 visualize = True
 visualize_2D = True
-visualize_3Dz = True
+visualize_3Dz = False
 visualize_3Detas = False
 
 # Event options

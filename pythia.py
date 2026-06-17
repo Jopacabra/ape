@@ -12,15 +12,13 @@ import hard_particles
 def scattering(pThatmin=config.jet.pythia.PTHATMIN, pThatmax=config.jet.pythia.PTHATMAX, do_shower=config.jet.pythia.SHOWER,
                type=config.jet.pythia.TYPE, tau=config.soft_transport.all.TAU_FS, x=0, y=0, etas=0,
                selection_power=config.jet.pythia.BIAS_POWER,
-               y_max=config.jet.pythia.RAP_MAX, y_min=config.jet.pythia.RAP_MIN, pythia_event=False, quiet=True,
+               y_min=config.jet.pythia.RAP_MIN, y_max=config.jet.pythia.RAP_MAX,
+               boost_min=config.jet.pythia.BOOST_MIN, boost_max=config.jet.pythia.BOOST_MAX,
+               pythia_event=False, quiet=True,
                seed=0):
     ############
     # Settings #
     ############
-    soft_emission_cut = 0.1  # For parton pairs, veto anything with fractional diparton pt difference > soft_emission_cut
-
-    # Generate scattering id
-    scattering_id = int(np.random.uniform(0, 1000000000000))
 
     ############################
     # Set up custom user hooks #
@@ -52,17 +50,37 @@ def scattering(pThatmin=config.jet.pythia.PTHATMIN, pThatmax=config.jet.pythia.P
         # Veto events that do not fit the desired requirements
         def doVetoProcessLevel(self, process):
             # Get info
+            """
+            This is information about the partonic hard scattering... y() here, for example, is the boost
+            """
             info = pythia_process.infoPython()
 
-            # Get only events at mid-rapidity, within my chosen bounds
-            abs_y = np.abs(info.y())
-            if abs_y > y_max:  # and np.abs(chosen_pt -np.abs(info.pTHat())) < pt_hat_res:
+            # Rapidity is additive under boosts -- that's the point. Final hard scattering plane lab frame rapidity is
+            # y_{lab} ~= y_{CM} +/- y_{hard}
+            # where y_{CM} is the rapidity of the partonic hard scattering relative to the CM frame
+            # and y_{hard} is partonic hard scattering plane boost relative in the partonic frame.
+
+            # Get only events where the hard scattering is not strongly boosted -- cuts on y_{CM}
+            abs_boost_y = np.abs(info.y())
+            if abs_boost_y > boost_max:  # and np.abs(chosen_pt -np.abs(info.pTHat())) < pt_hat_res:
                 return True  # Veto the event
-            elif abs_y < y_min:
+            elif abs_boost_y < boost_min:
                 return True  # Veto the event
-            else:
-                logging.info(f"Hard scattering y = {info.y()}")
-                return False  # Do not veto the event
+
+            # Get only events where the hard scattering plane is close to mid-rapidity  -- cuts on y_{CM} +/- y_{hard}
+            max_y = 0
+            for i in range(process.size()):
+                p = process[i]
+                max_y = max(max_y, np.abs(p.y()))
+                if p.isFinal():
+                    abs_y = abs(p.y())
+                    if abs_y > y_max:
+                        return True  # veto
+                    elif abs_y < y_min:
+                        return True  # veto
+            # logging.info(f"Hard scattering boost rapidity = {info.y()}")
+            logging.info(f"Hard scattering plane rapidity = {max_y}")
+            return False  # accept
 
     #################
     # Set up Pythia #
