@@ -101,6 +101,10 @@ class HierarchicalEventDataset:
         # Parquet compression handles repetition efficiently
         for key, value in soft_event_props.items():
             df[f'soft_{key}'] = float(value) if isinstance(value, (int, float)) else value  # Makes floats of ints
+
+        # Add the weight
+        df['weight'] = event_record.weight
+
         
         # Optimize dtypes for compression
         self._optimize_dtypes(df)
