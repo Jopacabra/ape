@@ -385,9 +385,11 @@ try:
     hard_event_records = np.array([])
     for i in range(num_hard_events):
         random_label = int(utilities.rng.uniform(1000000000, 9999999999, 1)[0])
+        logging.info("=" * 70)
         logging.info(
             f"Starting new hard scattering event {i + 1} of {num_hard_events} with label {random_label}."
         )
+        logging.info("=" * 70)
         ##################
         # Jet Production #
         ##################
