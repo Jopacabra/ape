@@ -55,6 +55,7 @@ class HierarchicalEventDataset:
     def save_job_output(
         self,
         job_id: int,
+        hard_id: int,
         soft_event_seed: int,
         event_record: Any,
         soft_event_props: dict,
@@ -67,6 +68,8 @@ class HierarchicalEventDataset:
         -----------
         job_id : int
             Unique identifier for this HTC job
+        hard_id : int
+            Unique identifier for this hard process
         soft_event_seed : int
             Identifier for the soft sector event
         event_record : EventRecord
@@ -81,11 +84,16 @@ class HierarchicalEventDataset:
         str
             Path to saved Parquet file
         """
+        # Pick only positive status particles
+        saved_particles = []
+        for particle in event_record.particles:
+            if particle.status > 0:
+                saved_particles.append(particle)
         
         # Build particle dataframe
         particle_records = [
             self._particle_to_dict(particle, soft_event_seed, i)
-            for i, particle in enumerate(event_record.particles)
+            for i, particle in enumerate(saved_particles)
         ]
         df = pd.DataFrame(particle_records)
 
@@ -117,14 +125,14 @@ class HierarchicalEventDataset:
         })
         
         # Save to file
-        output_file = self.dataset_dir / f"job_{job_id}_soft_{soft_event_seed}.parquet"
+        output_file = self.dataset_dir / f"job_{job_id}_{hard_id}_soft_{soft_event_seed}.parquet"
         pq.write_table(table, str(output_file), compression='snappy')
         
         # Cache metadata for fast filtering
         self.metadata_index[str(output_file)] = soft_event_props
         
         logging.info(f"Saved to {output_file.name}: "
-                    f"{len(event_record.particles)} hard particles, "
+                    f"{len(saved_particles)} hard particles, "
                     f"soft v2={soft_event_props.get('v_2', 0):.3f}, "
                     f"soft mult={soft_event_props.get('mult', 0):.1f}")
         

@@ -569,6 +569,7 @@ try:
             # Save particles to hierarchical dataset
             dataset_manager.save_job_output(
                 job_id=job_id,
+                hard_id=random_label,
                 soft_event_seed=seed,
                 event_record=hard_event,
                 soft_event_props= soft_dict,
