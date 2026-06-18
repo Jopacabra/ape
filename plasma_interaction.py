@@ -691,11 +691,13 @@ def N_gluons(particle: hard_particles.Particle, medium: plasma.plasma, dtau: flo
     L = (L0 + L0 + intdz) / 2  # Average pathlength in plasma of step, preventing 0.
     mu = mu_DeBye(T=temp)
     xmin = mu / E
+    inv_lambda_val = inv_lambda(T=temp, hard_pid=particle.id)
+    log_factor = np.log(L * (mu ** 2) / (2 * E * xmin))
 
     # Note here that the 1/2 inside the log is scheme dependent. It also is a constant, so leading log approximations
     # often drop it. Don't be too perturbed by its presence or abcense in different works.
-    return ((CR * ALPHAS/np.pi) * intdz * inv_lambda(T=temp, hard_pid=particle.id)
-            * np.log(L * (mu ** 2) / (2 * E * xmin))**2)
+    return ((CR * ALPHAS/np.pi) * intdz * inv_lambda_val
+            * log_factor**2)
 
 def N_gluons_fk(particle: hard_particles.Particle, medium: plasma.plasma, dtau: float):
     """
