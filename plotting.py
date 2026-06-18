@@ -1,9 +1,13 @@
 import numpy as np
 import matplotlib.lines as mlines
+import matplotlib.colors as mcolors
+import matplotlib.cm as mcm
+import matplotlib.patches as mpatches
 import pythia8
 from matplotlib import pyplot as plt
 
 import hard_particles
+import config
 
 id_color_dict = {21: "yellowgreen",
                  22: "m",
@@ -150,17 +154,34 @@ def plot_trajectories(hard_event : hard_particles.EventRecord, *, z_axis: str = 
     plt.show()
 
 
-def plot_parton_hadron(hard_event : hard_particles.EventRecord, hadrons : pythia8.Event, rap_max=1.0, N=80, max_height=3):
+def plot_parton_hadron(hard_event: hard_particles.EventRecord, hadrons: pythia8.Event,
+                       rap_max=1.0, N=80, max_height=3,
+                       plasma_object=None, hydro_resolution=60, hydro_vel_resolution=20,
+                       hydro_alpha=0.5, hydro_temp=True, hydro_flow=True):
     """
     Plot a 2D faux-collider view for the event in the xy-plane.
 
     Params:
-        hard_event : APE event record object -- holds particle trajectory information
-        hadrons : Pythia event object -- holds hadron information for calorimeter plots
-        rap_max : Maximum rapidity to plot. Can be None for no cut. (default: 1.0)
+        hard_event       : APE event record object -- holds particle trajectory information
+        hadrons          : Pythia event object -- holds hadron information for calorimeter plots
+        rap_max          : Maximum rapidity to plot. Can be None for no cut. (default: 1.0)
+        plasma_object    : Optional plasma.plasma instance. If provided, temperature and/or
+                           flow are rendered behind the trajectories at tau = sqrt(x^2 + y^2),
+                           eta_s = 0, centred on (hard_event.event_x0, hard_event.event_y0).
+        hydro_resolution : Number of grid points per side for the temperature background. (default: 60)
+        hydro_vel_resolution : Number of grid points per side for the quiver flow overlay. (default: 20)
+        hydro_alpha      : Opacity of the hydro background layer. (default: 0.5)
+        hydro_temp       : Whether to plot the temperature background. (default: True)
+        hydro_flow       : Whether to plot the flow velocity quiver. (default: True)
     """
     # Create figure
     fig = plt.figure(figsize=(7, 7))
+
+    # Create the polar calorimeter axis first, before any colorbars are attached,
+    # so that colorbar calls cannot shift the Cartesian axis and misalign the two.
+    if hadrons is not None:
+        paxis = fig.add_axes([0, 0, 1, 1], polar=True, frameon=False)
+        paxis.grid(False)
 
     ################
     # Trajectories #
@@ -204,6 +225,104 @@ def plot_parton_hadron(hard_event : hard_particles.EventRecord, hadrons : pythia
             y = np.array(traj[:, col_index["y"]]) - p.y_0
             rmax = max(rmax, np.max(np.hypot(x, y)))
 
+        ##########################
+        # Hydro background layer #
+        ##########################
+        if plasma_object is not None and (hydro_temp or hydro_flow):
+            cx = hard_event.event_x0
+            cy = hard_event.event_y0
+            t_switch = config.soft_transport.hydro.T_SWITCH
+
+            half = max(rmax, 1.0)
+
+            # Clip mask: a filled circle of radius `half` centred at the origin.
+            # All hydro artists are clipped to this circle so nothing renders outside rmax.
+            hydro_clip_circle = mpatches.Circle(
+                (0, 0), half, transform=axis.transData
+            )
+
+            # Temperature grid (evaluated first; mask is reused for flow)
+            xs_t = np.linspace(-half, half, hydro_resolution)
+            ys_t = np.linspace(-half, half, hydro_resolution)
+            Xg, Yg = np.meshgrid(xs_t, ys_t)  # shape (Ny, Nx)
+
+            tau_g = np.sqrt((Xg + cx) ** 2 + (Yg + cy) ** 2)
+            tau_g = np.clip(tau_g, plasma_object.t0, plasma_object.tf)
+
+            pts_t = np.stack([tau_g,
+                              Xg + cx,
+                              Yg + cy,
+                              np.zeros_like(Xg)], axis=-1)
+            temp_vals = plasma_object.temp(pts_t)  # shape (Ny, Nx)
+
+            # Mask: cells where T < T_SWITCH render as white / hidden
+            cold_mask = temp_vals < t_switch
+
+            if hydro_temp:
+                temp_max = plasma_object.max_temp()
+
+                # Build a "plasma" colormap that maps masked (cold) cells to white
+                base_cmap = mcm.get_cmap("plasma").copy()
+                base_cmap.set_bad(color="white")
+
+                temp_masked = np.ma.array(temp_vals, mask=cold_mask)
+
+                num_levels = 15
+                levels = np.linspace(t_switch, temp_max, num_levels)
+                pcm = axis.contourf(
+                    xs_t, ys_t, temp_masked,
+                    levels=levels,
+                    cmap=base_cmap,
+                    norm=mcolors.Normalize(vmin=t_switch, vmax=temp_max),
+                    alpha=hydro_alpha, zorder=0,
+                )
+                # Clip the entire contourf to the detector circle.
+                # QuadContourSet.set_clip_path() propagates to all child artists
+                # (collections were removed in Matplotlib 3.8).
+                pcm.set_clip_path(hydro_clip_circle)
+                # fig.colorbar(pcm, ax=axis, label="Temperature (GeV)",
+                #              fraction=0.035, pad=0.02)
+
+            # Flow quiver grid (coarser resolution)
+            if hydro_flow:
+                xs_v = np.linspace(-half, half, hydro_vel_resolution)
+                ys_v = np.linspace(-half, half, hydro_vel_resolution)
+                Xv, Yv = np.meshgrid(xs_v, ys_v)
+
+                tau_v = np.sqrt((Xv + cx) ** 2 + (Yv + cy) ** 2)
+                tau_v = np.clip(tau_v, plasma_object.t0, plasma_object.tf)
+
+                pts_v = np.stack([tau_v,
+                                  Xv + cx,
+                                  Yv + cy,
+                                  np.zeros_like(Xv)], axis=-1)
+                vx_vals = plasma_object.x_vel(pts_v)
+                vy_vals = plasma_object.y_vel(pts_v)
+                vmag = np.sqrt(vx_vals ** 2 + vy_vals ** 2)
+
+                # Remap cold_mask onto the coarser quiver grid via nearest-neighbour
+                # index lookup, then blank cold arrows with NaN so quiver skips them.
+                xi = np.searchsorted(xs_t, xs_v).clip(0, hydro_resolution - 1)
+                yi = np.searchsorted(ys_t, ys_v).clip(0, hydro_resolution - 1)
+                cold_mask_v = cold_mask[np.ix_(yi, xi)]  # shape (Nv, Nv)
+
+                vx_vals = np.where(cold_mask_v, np.nan, vx_vals)
+                vy_vals = np.where(cold_mask_v, np.nan, vy_vals)
+                vmag = np.where(cold_mask_v, np.nan, vmag)
+
+                flow_cmap = mcm.get_cmap("cool").copy()
+                flow_cmap.set_bad(color="white")
+
+                qv = axis.quiver(
+                    Xv, Yv, vx_vals, vy_vals, vmag,
+                    cmap=flow_cmap, norm=mcolors.Normalize(vmin=0, vmax=1),
+                    alpha=hydro_alpha, zorder=0.5,
+                    scale=None, pivot="mid",
+                )
+                qv.set_clip_path(hydro_clip_circle)
+                # fig.colorbar(qv, ax=axis, label="Flow velocity (c)",
+                #              fraction=0.035, pad=0.06)
+
         # Iterate over particles and plot
         id_to_color = {}
         j = 0
@@ -235,8 +354,8 @@ def plot_parton_hadron(hard_event : hard_particles.EventRecord, hadrons : pythia
             pid = getattr(p, "id", None)
             color = id_to_color.get(pid, None)
 
-            axis.plot(x, y, lw=1.5, alpha=0.9, color=color)
-            axis.plot(x[0], y[0], lw=0, marker="o", markersize=4, alpha=0.9, color="k")
+            axis.plot(x, y, lw=1.5, alpha=0.9, color=color, zorder=2)
+            axis.plot(x[0], y[0], lw=0, marker="o", markersize=4, alpha=0.9, color="k", zorder=2)
             any_plotted = True
 
             if p.thermalized:
@@ -251,19 +370,24 @@ def plot_parton_hadron(hard_event : hard_particles.EventRecord, hadrons : pythia
             det_y = rmax * np.sin(phi)
 
             # Plot detector interaction
-            axis.plot(det_x, det_y, "o", fillstyle="none", markersize=8, alpha=0.9, color=color)
-
-
-        # axis.set_xlabel("x [fm]")
-        # axis.set_ylabel("y [fm]")
-
-        # title = "Particle trajectories"
-        # if getattr(hard_event, "event_id", None) is not None:
-        #     title += f" (event_id={hard_event.event_id})"
-        # axis.set_title(title)
+            axis.plot(det_x, det_y, "o", fillstyle="none", markersize=8, alpha=0.9, color=color, zorder=2)
 
         if not any_plotted:
             axis.text(0, 0, "No trajectories to plot.", transform=axis.transAxes)
+
+        #################
+        # Detector rings #
+        #################
+        # Two concentric rings at the trajectory boundary, spacing the parton
+        # endpoint markers from the base of the calorimeter histogram bars.
+        ring_gap = 0.15 * max_height  # gap between the two rings, in data units
+        for r_ring in (rmax, rmax + ring_gap):
+            ring = mpatches.Circle(
+                (0, 0), r_ring,
+                fill=False, edgecolor="black", linewidth=1.2,
+                zorder=3, transform=axis.transData,
+            )
+            axis.add_patch(ring)
 
         if len(id_to_color) <= 12:
             handles = [
@@ -279,7 +403,7 @@ def plot_parton_hadron(hard_event : hard_particles.EventRecord, hadrons : pythia
 
         num_particles = hadrons.size()
         if hard_event is not None:
-            bottom = rmax
+            bottom = rmax + ring_gap  # start bars at the outer detector ring
         else:
             bottom = 4
 
@@ -301,7 +425,6 @@ def plot_parton_hadron(hard_event : hard_particles.EventRecord, hadrons : pythia
             radii = np.zeros(counts.shape)
         width = (2 * np.pi) / N
 
-        paxis = fig.add_axes(111, polar=True, frameon=False)
         paxis.grid(False)
         bars = paxis.bar((phi_bins[0:-1] + phi_bins[1:]) / 2, radii, width=width, bottom=bottom)
 

@@ -595,7 +595,8 @@ try:
 
             # plotting.plot_trajectories(hard_event, z_axis=None, rap_max=1)
             if visualize_2D:
-                plotting.plot_parton_hadron(hard_event=hard_event, hadrons=AA_pythia_event, rap_max=1.5)
+                plotting.plot_parton_hadron(hard_event=hard_event, hadrons=AA_pythia_event, plasma_object=plasma_object,
+                                            rap_max=1.5)
             if visualize_3Dz:
                 plotting.plot_trajectories(hard_event, z_axis="z", rap_max=None)
             if visualize_3Detas:
