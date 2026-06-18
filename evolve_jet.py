@@ -455,6 +455,9 @@ try:
         worker_counter = multiprocessing.Value('i', 0)
         worker_counter_lock = multiprocessing.Lock()
 
+        if config.jet.RAD_MODEL == "None":
+            logging.warning("No radiation enabled!")
+
         log_queue = multiprocessing.Queue()
         while True:  # Keep going until all particles are evolved
             """

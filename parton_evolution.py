@@ -258,6 +258,8 @@ def evolve_particle(particle : hard_particles.Particle, plasma_object : plasma.p
 
                     elif config.jet.RAD_MODEL == "iso_analytic":
                         rad_delta = pi.rad_delta(particle, plasma_object, dtau)
+                    elif config.jet.RAD_MODEL == "None":
+                        rad_delta = hard_particles.ParticleDelta(dpx=0, dpy=0, dpz=0)
                     else:
                         logging.error("Unknown RAD_MODEL, defaulting to iso_analytic")
                         rad_delta = pi.rad_delta(particle, plasma_object, dtau)
