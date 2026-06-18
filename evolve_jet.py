@@ -1,5 +1,6 @@
 
 import logging
+import logging.handlers
 import sys
 import os
 import json
@@ -299,10 +300,18 @@ logging.info('Soft event created.')
 # Global variables that will be filled on a per-worker basis
 _rng = None
 _nn = None
+_log_queue = None
 
 # Particle evolution worker initializer
-def _worker_init(child_seeds, worker_counter, worker_counter_lock):
-    global _rng, _nn
+def _worker_init(child_seeds, worker_counter, worker_counter_lock, log_queue):
+    global _rng, _nn, _log_queue
+    _log_queue = log_queue
+
+    # Remove any existing handlers and replace with QueueHandler
+    root = logging.getLogger()
+    root.handlers.clear()
+    root.addHandler(logging.handlers.QueueHandler(log_queue))
+    root.setLevel(logging.DEBUG)
 
     # Assign a guaranteed-unique worker index using a shared atomic counter
     with worker_counter_lock:
@@ -338,30 +347,22 @@ def _worker_init(child_seeds, worker_counter, worker_counter_lock):
     else:
         _nn = None
 
+def should_evolve(particle):
+    """Mirror of the skip conditions in treat_particle, runs in the main process."""
+    if particle.status < 0:
+        return False
+    if np.abs(particle.rap) > config.jet.RAP_MAX_EVOLVE:
+        return False
+    if not particle.isg and not particle.isq and not particle.isEWB:
+        return False
+    return True
+
 def treat_particle(particle, medium):
     """
-    1. Check whether to evolve a particle
-    2. Evolve if necessary
-    3. Return modified particle and lists of emission momenta and emission coordinates
+    Evolve particle, then return modified particle and lists of emission momenta and emission coordinates
     """
-    global _rng, _nn
+    global _rng, _nn, _log_queue
     logging.debug('Particle {}...'.format(particle.printout()))
-
-    #####################################
-    # Choose if we evolve this particle #
-    #####################################
-    # Only evolve positive status particles
-    if particle.status < 0:
-        logging.debug("Negative status. Skipping particle...")
-        return particle, [], []
-
-    # Far forward or backward rapidity particles can't be reasonably treated with our boost-invariance 2+1D medium.
-    if np.abs(particle.rap) > config.jet.RAP_MAX_EVOLVE:
-        logging.debug("Large rapidity. Skipping particle...")
-        return particle, [], []
-    if not particle.isg and not particle.isq and not particle.isEWB:
-        logging.debug("Untreated particle. Skipping particle...")
-        return particle, [], []
 
     #########################
     # Perform the evolution #
@@ -371,7 +372,12 @@ def treat_particle(particle, medium):
     pTF = particle.pT
     logging.debug(f"pT0: {pT0}, delta pT: {pTF - pT0} GeV")
 
-    return particle, emission_momenta, emission_coords
+    # Drain this worker's log records and return them
+    records = []
+    while not _log_queue.empty():
+        records.append(_log_queue.get_nowait())
+
+    return particle, emission_momenta, emission_coords, records
 
 num_jets = 0  # Counter for total jets analyzed
 try:
@@ -443,25 +449,36 @@ try:
         worker_counter = multiprocessing.Value('i', 0)
         worker_counter_lock = multiprocessing.Lock()
 
+        log_queue = multiprocessing.Queue()
         while True:  # Keep going until all particles are evolved
             """
             Perform the evolution on each particle
             """
             logging.info(f'Evolving particles, round {round_no}...')
             round_particles = hard_event.particles[passed_particles:]
-            with ProcessPoolExecutor(max_workers=max_workers,
-                                     initializer=_worker_init,
-                                     initargs=(child_seeds, worker_counter,
-                                               worker_counter_lock)) as executor:
+            with ProcessPoolExecutor(
+                    max_workers=max_workers,
+                    initializer=_worker_init,
+                    initargs=(child_seeds, worker_counter, worker_counter_lock, log_queue)
+            ) as executor:
 
                 # Process particles in parallel
-                futures = {executor.submit(treat_particle, p, plasma_object): p for p in round_particles}
+                futures = {}
+                for p in round_particles:
+                    if should_evolve(p):
+                        futures[executor.submit(treat_particle, p, plasma_object)] = p
+                    else:
+                        pass
 
                 # As they complete, spawn appropriate child particles
-
                 for future in as_completed(futures):
                     # Get result of this process
-                    modified_particle, emission_momenta, emission_coords = future.result()
+                    modified_particle, emission_momenta, emission_coords, records = future.result()
+
+                    # Replay log records into the main process logger
+                    main_logger = logging.getLogger()
+                    for record in records:
+                        main_logger.handle(record)
 
                     # Overwrite particle with modified particle
                     hard_event.particles[modified_particle.tag] = modified_particle
