@@ -281,9 +281,9 @@ def evolve_particle(particle : hard_particles.Particle, plasma_object : plasma.p
                 ###############
                 coll_t0 = time.time()
                 try:
-                    # coll_delta = pi.collisional_delta(particle, plasma_object, dtau)
+                    coll_delta = pi.collisional_delta(particle, plasma_object, dtau)
                     # # Use linear gradients for collisional interaction
-                    coll_delta = pi.collisional_delta_linear_gradients(particle, plasma_object, dtau)
+                    # coll_delta = pi.collisional_delta_linear_gradients(particle, plasma_object, dtau)
 
                 except pi.HadronGas:
                     logging.debug("Particle escaped plasma.")
