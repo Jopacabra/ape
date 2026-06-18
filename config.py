@@ -47,6 +47,7 @@ class mode:
     EVENT_TYPE = str(cfg['mode']['EVENT_TYPE'])
     NUM_HARD = int(cfg['mode']['NUM_HARD'])
     MAX_WORKERS = int(cfg['mode']['MAX_WORKERS'])
+    WRITE_HEPMC = bool(cfg['mode']['WRITE_HEPMC'])
 
 
 # Soft sector transport model configuration
