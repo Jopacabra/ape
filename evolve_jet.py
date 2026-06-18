@@ -418,9 +418,13 @@ try:
         num_hard_particles = len(hard_event.particles)
         logging.info('Hard scattering done.')
 
-        logging.info('Hadronizing vacuum result...')
-        vacuum_event_hadrons = pythia.ape_to_pythia(hard_event)
-        logging.info('Vacuum hadronization complete.')
+        if config.jet.hadronization.STRING:
+            logging.info('String hadronizing vacuum result...')
+            vacuum_event_hadrons = pythia.ape_to_pythia(hard_event)
+        elif config.mode.WRITE_HEPMC:
+            vacuum_event_hadrons = pythia.ape_to_pythia(hard_event, hadronize=False)
+        else:
+            vacuum_event_hadrons = None
 
         # Create a "live" copy of every status > 0 particle in the event that will be modified by Ape.
         hard_event.spawn_child_particles()
@@ -508,9 +512,12 @@ try:
         Hadronize hard particles using Lund-String hadronization.
         """
         if config.jet.hadronization.STRING:
-            AA_pythia_event = pythia.ape_to_pythia(hard_event)  # Adds shower history
+            logging.info('String hadronizing in-medium result...')
+            AA_pythia_event = pythia.ape_to_pythia(hard_event)
+        elif config.mode.WRITE_HEPMC:
+            AA_pythia_event = pythia.ape_to_pythia(hard_event, hadronize=False)
         else:
-            AA_pythia_event = pythia.ape_to_pythia(hard_event, hadronize=False)  # Adds shower history
+            AA_pythia_event = None
         """
         Hadronize particles using fragmentation
         """
