@@ -132,7 +132,7 @@ def inv_lambda(T, hard_pid=21, soft_pid=None):
 
 # Function to return inverse QGP drift mean free path in units of GeV
 # Total GW cross section, as per Sievert, Yoon, et. al.
-def inv_lambda_rhograd(T, gradtemp, tau, hard_pid=21, soft_pid=None):
+def inv_lambda_rhograd(T, gradtemp, hard_pid=21, soft_pid=None):
     """
     By default:
     We apply a reciprocal summation between the cross-section times density for medium gluons and for medium quarks
@@ -141,11 +141,11 @@ def inv_lambda_rhograd(T, gradtemp, tau, hard_pid=21, soft_pid=None):
 
     if soft_pid is None:
         # Assumes two light quark flavors in the medium, including their antiparticles
-        return (sigma(temp=T, hard_pid=hard_pid, soft_pid=21) * (rho(temp=T, soft_pid=21) + gradrho(temp=T, gradtemp=gradtemp, soft_pid=21)*tau)
-                + sigma(temp=T, hard_pid=hard_pid, soft_pid=1) * (rho(temp=T, soft_pid=1) + gradrho(temp=T, gradtemp=gradtemp, soft_pid=1)*tau)
-                + sigma(temp=T, hard_pid=hard_pid, soft_pid=-1) * (rho(temp=T, soft_pid=-1) + gradrho(temp=T, gradtemp=gradtemp, soft_pid=-1)*tau)
-                + sigma(temp=T, hard_pid=hard_pid, soft_pid=2) * (rho(temp=T, soft_pid=2) + gradrho(temp=T, gradtemp=gradtemp, soft_pid=2)*tau)
-                + sigma(temp=T, hard_pid=hard_pid, soft_pid=-2) * (rho(temp=T, soft_pid=-2)) + gradrho(temp=T, gradtemp=gradtemp, soft_pid=-2)*tau)
+        return (sigma(temp=T, hard_pid=hard_pid, soft_pid=21) * gradrho(temp=T, gradtemp=gradtemp, soft_pid=21)
+                + sigma(temp=T, hard_pid=hard_pid, soft_pid=1) * gradrho(temp=T, gradtemp=gradtemp, soft_pid=1)
+                + sigma(temp=T, hard_pid=hard_pid, soft_pid=-1) * gradrho(temp=T, gradtemp=gradtemp, soft_pid=-1)
+                + sigma(temp=T, hard_pid=hard_pid, soft_pid=2) * gradrho(temp=T, gradtemp=gradtemp, soft_pid=2)
+                + sigma(temp=T, hard_pid=hard_pid, soft_pid=-2) * gradrho(temp=T, gradtemp=gradtemp, soft_pid=-2))
     else:
         # Gives just the density of the pid you asked for.
         return sigma(temp=T, hard_pid=hard_pid, soft_pid=soft_pid) * rho(temp=T, soft_pid=soft_pid)
@@ -166,31 +166,55 @@ def drift_integrand(T, u_perp, u_par, E, hard_pid=21):
                * inv_lambda_val))
 
 
-# Integrand for mean drift including linear gradients
-def drift_integrand_linear_gradients(T, u_perp, u_par, gradtemp, tau, E, hard_pid=21):
+# Integrand for mean drift including linear gradients of transverse flow
+def drift_integrand_linear_gradients(T, u_perp, u_par, p, grad_u, grad_T, z_position, E, x_perp=np.array([0,0,0]), hard_pid=21):
     """
     Note that as of now we're including ONLY linear gradients of density in the presence of flow. We neglect gradients
     of the debye mass and gradients of the flow.
     """
-    FmGeV = 1/0.19732687
+    HBARC = 0.1973269804  # GeV * fm
 
-    # Compute dot product of u_perp and gradtemp
-    dotted_ugradperp = np.dot(u_perp, gradtemp)
-    gradtemp_mag = dotted_ugradperp / np.linalg.norm(u_perp)
+    # Compute vector (u_perp)_i  (grad u_perp)_{ij}
+    ugradu = np.einsum('i,ij->j', u_perp, grad_u)
+    xperpgradu = np.einsum('i,ij->j', x_perp, grad_u)
+
+    # Compute matrix determinant -- phase space contraction
+    p_hat = p / np.linalg.norm(p)
+    e1, e2 = utilities.transverse_basis(p_hat)
+    detM = utilities.det_M(np.array([grad_u]), np.array([u_par]), np.array([z_position]), e1, e2).item()  # get float from shape (1,) array
+    invdetM = 1 / detM
+    logging.debug(f"1/detM = {invdetM}")
+
+    # Get temperature gradient magnitude and direction
+    grad_T_mag = np.linalg.norm(grad_T)
+    grad_T_hat = grad_T / grad_T_mag
 
     # Compute inverse mfp and debye mass
     inv_lambda_val = inv_lambda(T, hard_pid=hard_pid, soft_pid=None)
-    inv_lambda_grad_val = inv_lambda_rhograd(T, gradtemp=gradtemp_mag, tau=tau, hard_pid=hard_pid, soft_pid=None)
+    grad_rho_inv_lambda = inv_lambda_rhograd(T, grad_T_mag)
     mu = mu_DeBye(T)
 
-    # Source link? -- Converts factor of fermi from integral to factor of GeV^{-1}
-    return ((FmGeV) * (1 / E) * config.jet.K_F_DRIFT
-            * (3 * np.log(E / mu)
-               * (u_perp / (1 - u_par))
-               * (mu ** 2)
-               * (inv_lambda_val - np.linalg.norm(u_perp)*inv_lambda_grad_val/(1-u_par))))
-                # Note the minus sign in front of the last term. This makes the term constructive.
+    # Returns a 3-vector of the broadening per unit length in this step.
+    grad_uperp = ((1/HBARC) * (3 / E)
+            * invdetM  # Phase space modification from gradients of transverse flow
+            * (mu **2)
+            * inv_lambda_val  # Inverse MFP
+            * np.log(E / mu)
+            * (1 / (1 - u_par))
+            * (u_perp - xperpgradu - (ugradu / (1 - u_par))*z_position)  # Vector difference!
+            )
+    # print(grad_uperp)
 
+    grad_rho = ((1/HBARC) * (3 / E)
+                * (mu ** 2)
+                * grad_rho_inv_lambda  # Inverse MFP ONLY from gradrho
+                * np.log(E / mu)
+                * (1 / (1 - u_par))
+                * np.dot((- xperpgradu - (u_perp / (1 - u_par))*z_position), grad_T_hat)
+                ) * grad_T_hat
+    # print(grad_rho)
+
+    return config.jet.K_F_DRIFT * (grad_uperp + grad_rho)
 
 
 
@@ -322,7 +346,8 @@ def collisional_delta(particle: hard_particles.Particle, medium: plasma.plasma, 
 
 
 # Collisional interaction momentum transfer public API using density gradient
-def collisional_delta_linear_gradients(particle: hard_particles.Particle, medium: plasma.plasma, dtau: float) -> hard_particles.ParticleDelta:
+def collisional_delta_linear_gradients(particle: hard_particles.Particle, medium: plasma.plasma, dtau: float,
+                                       scheme="MC_approx") -> hard_particles.ParticleDelta:
     # Start counters
     dpx = 0
     dpy = 0
@@ -337,25 +362,51 @@ def collisional_delta_linear_gradients(particle: hard_particles.Particle, medium
     elif temp < config.jet.T_HRG:  # Cancel evolution if we exit the plasma phase
         raise HadronGas()
     u = np.array([float(medium.x_vel(point)[0]), float(medium.y_vel(point)[0]), float(medium.z_vel(point))])
-    gradtemp_vec = np.array([float(medium.temp_grad_x(point)[0]), float(medium.temp_grad_y(point)[0]), float(medium.temp_grad_z(point))])
 
     # Get perp and parallel medium flow velocity
     uperp = utilities.perp_vec(a=u, b=p)
     upar = utilities.par_vec(a=u, b=p)
+    upar_scalar = np.sign(np.dot(upar, p)) * np.linalg.norm(upar)
 
-    # Get perp temperature gradient
-    gradtempperp = utilities.perp_vec(a=gradtemp_vec, b=p)
+    # Get grad_u_perp matrix
+    grad_x_u_x = medium.grad_x_u_x(point).item()
+    grad_x_u_y = medium.grad_x_u_y(point).item()
+    grad_x_u_z = 0  # plasma_object.grad_x_u_z(coords)
+
+    grad_y_u_x = medium.grad_y_u_x(point).item()
+    grad_y_u_y = medium.grad_y_u_y(point).item()
+    grad_y_u_z = grad_x_u_z  # plasma_object.grad_y_u_z(coords)
+
+    grad_z_u_x = 0  # plasma_object.grad_z_u_x(coords)
+    grad_z_u_y = grad_z_u_x  # plasma_object.grad_z_u_y(coords)
+    grad_z_u_z = grad_z_u_x  # plasma_object.grad_z_u_z(coords)
+    grad_u = np.array([[grad_x_u_x, grad_x_u_y, grad_x_u_z],  # row i=x
+        [grad_y_u_x, grad_y_u_y, grad_y_u_z],  # row i=y
+        [grad_z_u_x, grad_z_u_y, grad_z_u_z],  # row i=z
+    ])  # shape (N, 3, 3)
+
+    # Get grad_T
+    grad_T = np.array([medium.temp_grad_x(point).item(), medium.temp_grad_y(point).item(), medium.temp_grad_z(point).item()])
 
     # Get pathlength traveled
     delta_t, delta_x, delta_y, delta_z = particle.next_pathlength(dtau, cart=True)
     pathlength = np.sqrt(delta_x**2 + delta_y**2 + delta_z**2)
+    total_pathlength = particle.pathlength_since(particle.tau_0) + (pathlength / 2)
 
-    # Compute flow-induced broadening, add to momentum transfer.
-    drift = drift_integrand_linear_gradients(T=temp, u_perp=uperp, u_par=np.linalg.norm(upar),
-                                             gradtemp=gradtempperp, tau=pathlength,
-                                               E=particle.E, hard_pid=particle.id) * pathlength
-    uperp_hat = uperp / np.linalg.norm(uperp)  # Unit vector in direction of u_perp
-    drift_vec = drift * uperp_hat
+    # Determine expansion point x_{\perp 0}
+    if scheme == "MC_approx":
+        """
+        Our particle's recorded position relative to a straight line traj is the "average position", up to 
+        fluctuations in drift. We will take the approximation of accumulated (p_perp / E)z
+        """
+        x_perp = total_pathlength * (utilities.perp_vec(particle.p3, particle.p30))/particle.E0  # 3-vector!
+    elif scheme == "theory":
+        x_perp = np.array([0,0,0])  # 3-vector!
+
+    # Compute flow-induced broadening (integrand times step pathlength), add to momentum transfer.
+    drift_vec = drift_integrand_linear_gradients(T=temp, u_perp=uperp, u_par=upar_scalar, p=particle.p3,
+                                                 grad_u=grad_u, grad_T=grad_T, z_position=total_pathlength,
+                                                 E=particle.E, hard_pid=particle.id, x_perp=x_perp) * pathlength
 
     dpx += float(drift_vec[0])
     dpy += float(drift_vec[1])
