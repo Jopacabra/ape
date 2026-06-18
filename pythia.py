@@ -71,9 +71,9 @@ def scattering(pThatmin=config.jet.pythia.PTHATMIN, pThatmax=config.jet.pythia.P
             max_y = 0
             for i in range(process.size()):
                 p = process[i]
-                max_y = max(max_y, np.abs(p.y()))
+                abs_y = np.abs(p.y())
                 if p.isFinal():
-                    abs_y = abs(p.y())
+                    max_y = max(max_y, abs_y)
                     if abs_y > y_max:
                         return True  # veto
                     elif abs_y < y_min:
