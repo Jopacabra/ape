@@ -183,11 +183,14 @@ def drift_integrand_linear_gradients(T, u_perp, u_par, p, grad_u, grad_T, z_posi
     e1, e2 = utilities.transverse_basis(p_hat)
     detM = utilities.det_M(np.array([grad_u]), np.array([u_par]), np.array([z_position]), e1, e2).item()  # get float from shape (1,) array
     invdetM = 1 / detM
-    logging.debug(f"1/detM = {invdetM}")
+    # logging.debug(f"1/detM = {invdetM}")
 
     # Get temperature gradient magnitude and direction
     grad_T_mag = np.linalg.norm(grad_T)
-    grad_T_hat = grad_T / grad_T_mag
+    if grad_T_mag > 0.0:
+        grad_T_hat = grad_T / grad_T_mag
+    else:
+        grad_T_hat = np.array([0, 0, 0])
 
     # Compute inverse mfp and debye mass
     inv_lambda_val = inv_lambda(T, hard_pid=hard_pid, soft_pid=None)
@@ -214,7 +217,7 @@ def drift_integrand_linear_gradients(T, u_perp, u_par, p, grad_u, grad_T, z_posi
                 ) * grad_T_hat
     # print(grad_rho)
 
-    return config.jet.K_F_DRIFT * (grad_uperp + grad_rho)
+    return config.jet.K_F_DRIFT * (grad_uperp)# + grad_rho)
 
 
 
