@@ -175,7 +175,7 @@ def plot_parton_hadron(hard_event: hard_particles.EventRecord, hadrons: pythia8.
         hydro_flow       : Whether to plot the flow velocity quiver. (default: True)
     """
     # Create figure
-    fig = plt.figure(figsize=(7, 7))
+    fig = plt.figure(figsize=(7, 7), frameon=False)
 
     # Create the polar calorimeter axis first, before any colorbars are attached,
     # so that colorbar calls cannot shift the Cartesian axis and misalign the two.
