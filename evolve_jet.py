@@ -200,7 +200,7 @@ elif event_type == "slab":
                                                   x_vel_func=x_vel_func,
                                                   y_vel_func=y_vel_func,
                                                   z_vel_func=z_vel_func,
-                                                  name=None, resolution=10, xmax=1.5*rmax, time=1.5*rmax, tau0=0.5)
+                                                  name=None, resolution=25, xmax=1.5*rmax, time=1.5*rmax, tau0=0.5)
 
 # Create a slab of flowing plasma with flow and flow gradient in positive x dir.
 elif event_type == "flowgradslab":
@@ -287,6 +287,8 @@ else:
             soft_dict = {}
 
         plasma_object = plasma.plasma(hydro_file_path=event_type)
+        plasma_object.meta = soft_dict
+        logging.debug("SS")
     except:
         logging.error("Invalid event type or path.")
         raise ValueError("Invalid event type.")
@@ -448,6 +450,7 @@ try:
             max_workers = config.mode.MAX_WORKERS
         else:
             max_workers = int(os.environ.get("SLURM_CPUS_PER_TASK", os.cpu_count()))
+        logging.debug(f"Max workers: {max_workers}")
         seed_sequence = np.random.SeedSequence()
         child_seeds = seed_sequence.spawn(max_workers)  # One per worker
 
@@ -567,7 +570,7 @@ try:
             dataset_manager = event_dataset.HierarchicalEventDataset(os.path.join(results_path, "particle_dataset"))
             job_id = int(os.environ.get("CONDOR_CLUSTER_ID", "0"))  # Extract from HTC job ID
 
-            # Get soft event property dictionary, if present
+            # Get soft event property dictionary from the plasma event, if present
             if plasma_object.meta is not None:
                 soft_dict = plasma_object.meta
             else:
@@ -584,7 +587,7 @@ try:
                 hard_id=random_label,
                 soft_event_seed=seed,
                 event_record=hard_event,
-                soft_event_props= soft_dict,
+                soft_event_props=soft_dict,
                 config_dict=flat_config,
             )
 
