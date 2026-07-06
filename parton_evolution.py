@@ -165,7 +165,7 @@ def evolve_particle(particle : hard_particles.Particle, plasma_object : plasma.p
                         N_norm = 1  # Enhancement on number of gluons, for forcing emission in debug
                         if poisson_N:
                             # Poisson sample to determine number of gluons to emit, with an average of this step's number
-                            print(total_number)
+                            # print(total_number)
                             n = rng.poisson(lam=N_norm*total_number, size=1).item()
                         else:
                             # Wait until we accumulate "1 gluon" worth of emissions before emitting
@@ -281,9 +281,16 @@ def evolve_particle(particle : hard_particles.Particle, plasma_object : plasma.p
                 ###############
                 coll_t0 = time.time()
                 try:
-                    coll_delta = pi.collisional_delta(particle, plasma_object, dtau)
-                    # # Use linear gradients for collisional interaction
-                    # coll_delta = pi.collisional_delta_linear_gradients(particle, plasma_object, dtau)
+                    if config.jet.COL_MODEL == "flow":
+                        # logging.warning("FLOW!")
+                        coll_delta = pi.collisional_delta(particle, plasma_object, dtau)
+                    elif config.jet.COL_MODEL == "flowgrad":
+                        # logging.warning("FLOWGRAD!")
+                        # Use linear gradients for collisional interaction
+                        coll_delta = pi.collisional_delta_linear_gradients(particle, plasma_object, dtau)
+                    else:
+                        logging.warning("Invalid collisional model choice. No collisional interactions.")
+                        coll_delta = hard_particles.ParticleDelta(dpx=0, dpy=0, dpz=0)
 
                 except pi.HadronGas:
                     logging.debug("Particle escaped plasma.")

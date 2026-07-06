@@ -114,6 +114,7 @@ class jet:
     RAP_MAX_EVOLVE = float(cfg['jet']['RAP_MAX_EVOLVE'])
     EMIN = float(cfg['jet']['EMIN'])
     RAD_MODEL = str(cfg['jet']['RAD_MODEL'])
+    COL_MODEL = str(cfg['jet']['COL_MODEL'])
     class hadronization:
         FRAG = bool(cfg['jet']['hadronization']['FRAG'])
         STRING = bool(cfg['jet']['hadronization']['STRING'])
