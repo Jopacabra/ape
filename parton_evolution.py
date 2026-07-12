@@ -140,7 +140,7 @@ def evolve_particle(particle : hard_particles.Particle, plasma_object : plasma.p
                         t0 = time.time()
                         fixed_gluons = True
                         poisson_N = True
-                        poisson_E = True
+                        poisson_E = False
                         if fixed_gluons:
                             """!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"""
                             # Fix analytic expectation for gluon emissions per step
