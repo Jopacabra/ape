@@ -14,23 +14,23 @@ name = "hepmc"
 # Statistics settings
 n_bootstrap_samples = 1000
 
-# Jet finding cuts
-R = 0.4
+# Jet finding particle cuts
+R = 1.0
 pTmin_jet_finder = 0.0
 rap_min_jet_finder = 0.0
 rap_max_jet_finder = 100.0
 
 # Jet cuts
-jet_minpt = 30.0
-jet_maxpt = 60.0
+jet_minpt = 10.0
+jet_maxpt = 100.0
 rap_min_jet_axis = 0.0
-rap_max_jet_axis = 0.5
-phi_fence_jet_axis = 0.8
+rap_max_jet_axis = 0.1
+phi_fence_jet_axis = 0.1
 
 # Particle cuts
 pTmin_vn = 2.0
-pTmax_vn = 10
-num_pt_bins = 4
+pTmax_vn = 20
+num_pt_bins = 8
 
 # Flow attractor
 v_jet_pts = []
@@ -43,6 +43,12 @@ flow = "x"
 flow_i = 0
 ls = ["-", "--", ".-", ":"]
 color = ["r", "g", "b", "m"]
+
+# define weighted mean stat for bootstrapping -- with axis setting for trickery with multi-dimensional data.
+def weighted_mean(vn, w, axis=-1):
+    return np.nansum(vn * w, axis=axis) / np.nansum(w, axis=axis)
+
+# Iterate over cases
 for case in ["v", "m"]:
 
     # Files
@@ -68,6 +74,7 @@ for case in ["v", "m"]:
     d = 0
     e = 0
     g = 0
+    failed = 0
     analyzed_jets = []
     analyzed_weights = []
     for file in hepmc_files:
@@ -76,10 +83,15 @@ for case in ["v", "m"]:
                 event = f.read()
 
             # Run jetfinder on this file
-            jets = observables.hepmc_to_fastjet(hepmc_event=event, R=R, rap_min=rap_min_jet_finder, rap_max=rap_max_jet_finder, pTmin=pTmin_jet_finder,
-                                                scheme=fastjet.WTA_pt_scheme)
+            try:
+                jets = observables.hepmc_to_fastjet(hepmc_event=event, R=R, rap_min=rap_min_jet_finder, rap_max=rap_max_jet_finder, pTmin=pTmin_jet_finder,
+                                                    scheme=fastjet.WTA_pt_scheme)
+            except:
+                print("failed file!")
+                failed += 1
+                continue
 
-            # Get weight of event as array length of jets array
+            # Get weight of event
             weight = event.weight("pythia")
 
             # Cut jet properties
@@ -132,6 +144,7 @@ for case in ["v", "m"]:
             continue
 
     # Readout
+    print(f"Number of failed {case} events: {failed}")
     print(f"Number of too small pT {case} jets: {e}")
     print(f"Number of too large pT {case} jets: {g}")
     print(f"Number of too small rap {case} jets: {a}")
@@ -164,22 +177,23 @@ for case in ["v", "m"]:
 
     if case == "v":
         rng = np.random.default_rng()
-        v1_data = (v1s * v_weights,)  # samples must be in a sequence
-        v1_res = bootstrap(v1_data, np.nansum, axis=0, confidence_level=0.9, rng=rng, n_resamples=n_bootstrap_samples)
-        v1_avg = np.mean(v1_res.bootstrap_distribution, axis=1) / np.sum(v_weights, axis=0)
-        v1_avg_err = v1_res.standard_error / np.sum(v_weights, axis=0)
+
+        v1_res = bootstrap((v1s, v_weights), weighted_mean, axis=0, paired=True,
+                           confidence_level=0.9, rng=rng, n_resamples=n_bootstrap_samples)
+        v1_avg = np.mean(v1_res.bootstrap_distribution, axis=1)
+        v1_avg_err = v1_res.standard_error
         del v1_res
 
-        v2_data = (v2s * v_weights,)  # samples must be in a sequence
-        v2_res = bootstrap(v2_data, np.nansum, axis=0, confidence_level=0.9, rng=rng, n_resamples=n_bootstrap_samples)
-        v2_avg = np.mean(v2_res.bootstrap_distribution, axis=1) / np.sum(v_weights, axis=0)
-        v2_avg_err = v2_res.standard_error / np.sum(v_weights, axis=0)
+        v2_res = bootstrap((v2s, v_weights), weighted_mean, axis=0, paired=True,
+                           confidence_level=0.9, rng=rng, n_resamples=n_bootstrap_samples)
+        v2_avg = np.mean(v2_res.bootstrap_distribution, axis=1)
+        v2_avg_err = v2_res.standard_error
         del v2_res
 
-        v3_data = (v3s * v_weights,)  # samples must be in a sequence
-        v3_res = bootstrap(v3_data, np.nansum, axis=0, confidence_level=0.9, rng=rng, n_resamples=n_bootstrap_samples)
-        v3_avg = np.mean(v3_res.bootstrap_distribution, axis=1) / np.sum(v_weights, axis=0)
-        v3_avg_err = v3_res.standard_error / np.sum(v_weights, axis=0)
+        v3_res = bootstrap((v3s, v_weights), weighted_mean, axis=0, paired=True,
+                           confidence_level=0.9, rng=rng, n_resamples=n_bootstrap_samples)
+        v3_avg = np.mean(v3_res.bootstrap_distribution, axis=1)
+        v3_avg_err = v3_res.standard_error
         del v3_res
 
     elif case == "m":
@@ -188,22 +202,23 @@ for case in ["v", "m"]:
         #############################################
 
         rng = np.random.default_rng()
-        v1_data = (v1s * v_weights,)  # samples must be in a sequence
-        v1_res = bootstrap(v1_data, np.nansum, axis=0, confidence_level=0.9, rng=rng, n_resamples=n_bootstrap_samples)
-        v1_avg = np.mean(v1_res.bootstrap_distribution, axis=1) / np.sum(v_weights, axis=0) - v1_avg
-        v1_avg_err = np.sqrt((v1_res.standard_error / np.sum(v_weights, axis=0))**2 + v1_avg_err**2)
+
+        v1_res = bootstrap((v1s, v_weights), weighted_mean, axis=0, paired=True,
+                           confidence_level=0.9, rng=rng, n_resamples=n_bootstrap_samples)
+        v1_avg = np.mean(v1_res.bootstrap_distribution, axis=1) - v1_avg
+        v1_avg_err = np.sqrt(v1_res.standard_error ** 2 + v1_avg_err ** 2)
         del v1_res
 
-        v2_data = (v2s * v_weights,)  # samples must be in a sequence
-        v2_res = bootstrap(v2_data, np.nansum, axis=0, confidence_level=0.9, rng=rng, n_resamples=n_bootstrap_samples)
-        v2_avg = np.mean(v2_res.bootstrap_distribution, axis=1) / np.sum(v_weights, axis=0) - v2_avg
-        v2_avg_err = np.sqrt((v2_res.standard_error / np.sum(v_weights, axis=0))**2 + v2_avg_err**2)
+        v2_res = bootstrap((v2s, v_weights), weighted_mean, axis=0, paired=True,
+                           confidence_level=0.9, rng=rng, n_resamples=n_bootstrap_samples)
+        v2_avg = np.mean(v2_res.bootstrap_distribution, axis=1) - v2_avg
+        v2_avg_err = np.sqrt(v2_res.standard_error ** 2 + v2_avg_err ** 2)
         del v2_res
 
-        v3_data = (v3s * v_weights,)  # samples must be in a sequence
-        v3_res = bootstrap(v3_data, np.nansum, axis=0, confidence_level=0.9, rng=rng, n_resamples=n_bootstrap_samples)
-        v3_avg = np.mean(v3_res.bootstrap_distribution, axis=1) / np.sum(v_weights, axis=0) - v3_avg
-        v3_avg_err = np.sqrt((v3_res.standard_error / np.sum(v_weights, axis=0))**2 + v3_avg_err**2)
+        v3_res = bootstrap((v3s, v_weights), weighted_mean, axis=0, paired=True,
+                           confidence_level=0.9, rng=rng, n_resamples=n_bootstrap_samples)
+        v3_avg = np.mean(v3_res.bootstrap_distribution, axis=1) - v3_avg
+        v3_avg_err = np.sqrt(v3_res.standard_error ** 2 + v3_avg_err ** 2)
         del v3_res
 
 
@@ -252,7 +267,7 @@ axis.plot(E_bin_cents, v3_avg, marker='^', markersize=7, linestyle=':',
 axis.fill_between(E_bin_cents, v3_avg - v3_avg_err, v3_avg + v3_avg_err,
                   color=color[flow_i+2], alpha=0.25, zorder=2)
 
-axis.set_xlabel('E (GeV)', fontsize=10)
+axis.set_xlabel(r'$p_T$ (GeV)', fontsize=10)
 axis.set_ylabel('Change in Average Harmonic', fontsize=10)
 axis.legend(fontsize=10, loc='best')
 axis.grid(True, alpha=0.3)
