@@ -80,6 +80,7 @@ def scattering(pThatmin=config.jet.pythia.PTHATMIN, pThatmax=config.jet.pythia.P
                         return True  # veto
             # logging.info(f"Hard scattering boost rapidity = {info.y()}")
             logging.info(f"Hard scattering plane rapidity = {max_y}")
+            logging.info(f"Hard scattering pThat = {info.pTHat()}")
             return False  # accept
 
     #################
