@@ -33,7 +33,7 @@ import utilities
 # Settings #
 ############
 # Visualization options
-visualize = True
+visualize = False
 visualize_2D = True
 visualize_3Dz = False
 visualize_3Detas = False
@@ -338,8 +338,8 @@ def _worker_init(child_seeds, worker_counter, worker_counter_lock, log_queue):
         # Load radiation neural network -- O(0.01s)
         logging.debug("Loading radiation neural network...")
         _nn = RadiationEmulatorInference(
-            model_file=os.path.join(flow_rad_nn_dir, "data/radiation_emulator.pt"),
-            normalization_file=os.path.join(flow_rad_nn_dir, "data/radiation_normalization.json"),
+            model_file=os.path.join(flow_rad_nn_dir, "data/radiation_emulator_wuvdecay.pt"),
+            normalization_file=os.path.join(flow_rad_nn_dir, "data/radiation_normalization_wuvdecay.json"),
             device='cpu',
             compile=False,
             quiet=True,
@@ -374,239 +374,245 @@ def treat_particle(particle, medium):
     pTF = particle.pT
     logging.debug(f"pT0: {pT0}, delta pT: {pTF - pT0} GeV")
 
-    # Drain this worker's log records and return them
-    records = []
-    while not _log_queue.empty():
-        records.append(_log_queue.get_nowait())
-
-    return particle, emission_momenta, emission_coords, records
+    return particle, emission_momenta, emission_coords
 
 num_jets = 0  # Counter for total jets analyzed
 try:
+    # Try to get max workers of Slurm environment variable, else use number of cores read by os.cpu
+    if config.mode.MAX_WORKERS > 0:
+        max_workers = config.mode.MAX_WORKERS
+    else:
+        max_workers = int(os.environ.get("SLURM_CPUS_PER_TASK", os.cpu_count()))
+    logging.debug(f"Max workers: {max_workers}")
 
-    hard_event_records = np.array([])
-    for i in range(num_hard_events):
-        random_label = int(utilities.rng.uniform(1000000000, 9999999999, 1)[0])
-        logging.info("=" * 70)
-        logging.info(
-            f"Starting new hard scattering event {i + 1} of {num_hard_events} with label {random_label}."
-        )
-        logging.info("=" * 70)
-        ##################
-        # Jet Production #
-        ##################
+    # Create manager-based shared objects ONCE, outside the loop, plus logging queue
+    mp_manager = multiprocessing.Manager()
+    log_queue = multiprocessing.Queue()
 
-        """
-        Get a hard particle event from Pythia.
-        """
-        # Production point
-        if config.mode.VARY_POINT:
-            logging.debug('Sampling hard scattering point...')
-            point = collision.generate_jet_seed_point(plasma_object, seed=seed+i)
-            tau_0 = config.jet.TAU_PROD
-            x_0 = point[0]
-            y_0 = point[1]
-            etas_0 = 0.0
+    # Attach the real handlers to a QueueListener in the main process
+    main_handlers = logging.getLogger().handlers[:]  # file + stderr handlers
+    log_listener = logging.handlers.QueueListener(
+        log_queue, *main_handlers, respect_handler_level=True
+    )
 
-        else:
-            logging.debug('Using central hard scattering point...')
-            tau_0 = config.jet.TAU_PROD
-            x_0 = 0
-            y_0 = 0
-            etas_0 = 0.0
+    # Start listening for logs from your workers
+    log_listener.start()
 
-        logging.info(f"Embedding hard scattering at ({tau_0}, {x_0}, {y_0}, {etas_0})")
-        hard_event, event_weight = pythia.scattering(tau=tau_0, x=x_0, y=y_0, etas=etas_0, pythia_event=False, seed=seed + i)
-        num_hard_particles = len(hard_event.particles)
-        logging.info('Hard scattering done.')
+    # One seed sequence for all events
+    seed_sequence = np.random.SeedSequence()
+    child_seeds = seed_sequence.spawn(max_workers)
 
-        if config.jet.hadronization.STRING:
-            logging.info('String hadronizing vacuum result...')
-            vacuum_event_hadrons = pythia.ape_to_pythia(hard_event)
-        elif config.mode.WRITE_HEPMC:
-            vacuum_event_hadrons = pythia.ape_to_pythia(hard_event, hadronize=False)
-        else:
-            vacuum_event_hadrons = None
+    # Create a shared atomic counter so each worker gets a guaranteed-unique index
+    # Use manager-backed Value and Lock — safe across pool boundaries
+    worker_counter = mp_manager.Value('i', 0)
+    worker_counter_lock = mp_manager.Lock()
 
-        # Create a "live" copy of every status > 0 particle in the event that will be modified by Ape.
-        hard_event.spawn_child_particles()
+    # Initialize worker pool
+    with ProcessPoolExecutor(
+            max_workers=max_workers,
+            initializer=_worker_init,
+            initargs=(child_seeds, worker_counter, worker_counter_lock, log_queue)
+    ) as executor:
 
+        # Do hard events
+        hard_event_records = np.array([])
+        for i in range(num_hard_events):
+            random_label = int(utilities.rng.uniform(1000000000, 9999999999, 1)[0])
+            logging.info("=" * 70)
+            logging.info(
+                f"Starting new hard scattering event {i + 1} of {num_hard_events} with label {random_label}."
+            )
+            logging.info("=" * 70)
 
-        #################
-        # Jet Evolution #
-        #################
-        """
-        Process each particle in the jet in parallel, then process each emission in parallel, & so on.
-        
-        Only the direct descendents of a prompt hard particle are evolved -- thus we do not treat higher order in 
-        opacity radiation. They lose energy elastically and radiatively, but we drop the subsequently emitted particles.
-        """
-        round_no = 0
-        passed_particles = 0
-        max_rad_gens = 1  # Maximum number of emissions from a single hard particle lineage
+            ##################
+            # Jet Production #
+            ##################
 
-        # Try to get max workers of Slurm environment variable, else use number of cores read by os.cpu
-        if config.mode.MAX_WORKERS > 0:
-            max_workers = config.mode.MAX_WORKERS
-        else:
-            max_workers = int(os.environ.get("SLURM_CPUS_PER_TASK", os.cpu_count()))
-        logging.debug(f"Max workers: {max_workers}")
-        seed_sequence = np.random.SeedSequence()
-        child_seeds = seed_sequence.spawn(max_workers)  # One per worker
-
-        # Create a shared atomic counter so each worker gets a guaranteed-unique index
-        worker_counter = multiprocessing.Value('i', 0)
-        worker_counter_lock = multiprocessing.Lock()
-
-        if config.jet.RAD_MODEL == "None":
-            logging.warning("No radiation enabled!")
-
-        log_queue = multiprocessing.Queue()
-        while True:  # Keep going until all particles are evolved
             """
-            Perform the evolution on each particle
+            Get a hard particle event from Pythia.
             """
-            logging.info(f'Evolving particles, round {round_no}...')
-            round_particles = hard_event.particles[passed_particles:]
-            with ProcessPoolExecutor(
-                    max_workers=max_workers,
-                    initializer=_worker_init,
-                    initargs=(child_seeds, worker_counter, worker_counter_lock, log_queue)
-            ) as executor:
+            # Production point
+            if config.mode.VARY_POINT:
+                logging.debug('Sampling hard scattering point...')
+                point = collision.generate_jet_seed_point(plasma_object, seed=seed+i)
+                tau_0 = config.jet.TAU_PROD
+                x_0 = point[0]
+                y_0 = point[1]
+                etas_0 = 0.0
+
+            else:
+                logging.debug('Using central hard scattering point...')
+                tau_0 = config.jet.TAU_PROD
+                x_0 = 0
+                y_0 = 0
+                etas_0 = 0.0
+
+            logging.info(f"Embedding hard scattering at ({tau_0}, {x_0}, {y_0}, {etas_0})")
+            hard_event, event_weight = pythia.scattering(tau=tau_0, x=x_0, y=y_0, etas=etas_0, pythia_event=False, seed=seed + i)
+            num_hard_particles = len(hard_event.particles)
+            logging.info('Hard scattering done.')
+
+            if config.jet.hadronization.STRING:
+                logging.info('String hadronizing vacuum result...')
+                vacuum_event_hadrons = pythia.ape_to_pythia(hard_event)
+            elif config.mode.WRITE_HEPMC:
+                vacuum_event_hadrons = pythia.ape_to_pythia(hard_event, hadronize=False)
+            else:
+                vacuum_event_hadrons = None
+
+            # Create a "live" copy of every status > 0 particle in the event that will be modified by Ape.
+            hard_event.spawn_child_particles()
+
+
+            #################
+            # Jet Evolution #
+            #################
+            """
+            Process each particle in the jet in parallel, then process each emission in parallel, & so on.
+            
+            Only the direct descendents of a prompt hard particle are evolved -- thus we do not treat higher order in 
+            opacity radiation. They lose energy elastically and radiatively, but we drop the subsequently emitted particles.
+            """
+            round_no = 0
+            passed_particles = 0
+            max_rad_gens = 1  # Maximum number of emissions from a single hard particle lineage
+
+            if config.jet.RAD_MODEL == "None":
+                logging.warning("No radiation enabled!")
+
+            while True:  # Keep going until all particles are evolved
+                """
+                Perform the evolution on each particle
+                """
+                logging.info(f'Evolving particles, round {round_no}...')
+                round_particles = hard_event.particles[passed_particles:]
 
                 # Process particles in parallel
                 futures = {}
                 for p in round_particles:
-                    if should_evolve(p):
+                    if should_evolve(p):  # Only evolve accepted particles
                         futures[executor.submit(treat_particle, p, plasma_object)] = p
-                    else:
-                        pass
 
                 # As they complete, spawn appropriate child particles
                 for future in as_completed(futures):
                     # Get result of this process
-                    modified_particle, emission_momenta, emission_coords, records = future.result()
-
-                    # Replay log records into the main process logger
-                    main_logger = logging.getLogger()
-                    for record in records:
-                        main_logger.handle(record)
+                    modified_particle, emission_momenta, emission_coords = future.result()
 
                     # Overwrite particle with modified particle
                     hard_event.particles[modified_particle.tag] = modified_particle
 
                     # Spawn child particles
                     if round_no < max_rad_gens:  # Only create new particles for the first round of emissions
-                        for i in range(0, len(emission_momenta)):
-                            hard_event.spawn_radiation(modified_particle.tag, emission_momenta[i], emission_coords[i])
+                        for j in range(0, len(emission_momenta)):
+                            hard_event.spawn_radiation(modified_particle.tag, emission_momenta[j], emission_coords[j])
                     else:
                         pass
-            passed_particles += len(round_particles)
 
-            logging.info(f'Evolution round {round_no} complete.')
-            if passed_particles == len(hard_event.particles):
-                logging.info('All particles evolved.')
-                break
-            round_no += 1
+                passed_particles += len(round_particles)
 
+                logging.info(f'Evolution round {round_no} complete.')
+                if passed_particles == len(hard_event.particles):
+                    logging.info('All particles evolved.')
+                    break
+                round_no += 1
 
-        #################
-        # Hadronization #
-        #################
+            #################
+            # Hadronization #
+            #################
 
-        """
-        Hadronize hard particles using Lund-String hadronization.
-        """
-        if config.jet.hadronization.STRING:
-            logging.info('String hadronizing in-medium result...')
-            AA_pythia_event = pythia.ape_to_pythia(hard_event)
-        elif config.mode.WRITE_HEPMC:
-            AA_pythia_event = pythia.ape_to_pythia(hard_event, hadronize=False)
-        else:
-            AA_pythia_event = None
-        """
-        Hadronize particles using fragmentation
-        """
-        if config.jet.hadronization.FRAG:
-            logging.info('Fragmenting hard particles...')
-            fragger = fragmentation.Fragger(seed=config.mode.SEED)
-            for particle in hard_event.particles:
-                particle.fragz = fragger.frag(particle)
-                particle.fragz0 = fragger.frag(particle, i=True)
-            logging.info('Fragmentation of hard particles complete.')
-        else:
-            logging.info('Skipping fragmentation of hard particles.')
-
-        ######################
-        # HepMC Event output #
-        ######################
-        """
-        Send the output of the Pythia events to a HepMC3 file.
-        """
-        if config.mode.WRITE_HEPMC:
-            logging.debug("Saving Medium HepMC3 file...")
-            hepmc_event = pythia.pythia_to_hepmc(AA_pythia_event, vt=tau_0 * np.cosh(etas_0), vx=x_0, vy=y_0, vz=tau_0 * np.sinh(etas_0), weight=event_weight)
-            hepmc_filename = f"results/hepmc/m/{random_label}.dat"
-            # os.remove(hepmc_filename)
-            with hp.open(hepmc_filename, "w") as f:
-                f.write(hepmc_event)
-            logging.debug("Saved Medium HepMC3 file.")
-
-            logging.debug("Saving Vacuum HepMC3 file...")
-            vac_hepmc_event = pythia.pythia_to_hepmc(vacuum_event_hadrons, vt=tau_0*np.cosh(etas_0), vx=x_0, vy=y_0, vz=tau_0*np.sinh(etas_0), weight=event_weight)
-            vac_hepmc_filename = f"results/hepmc/v/vac_{random_label}.dat"
-            # os.remove(hepmc_filename)
-            with hp.open(vac_hepmc_filename, "w") as f:
-                f.write(vac_hepmc_event)
-            logging.debug("Saved Vacuum HepMC3 file.")
-
-
-        ####################################
-        # Hard Particle Dataset Management #
-        ####################################
-        # Initialize dataset manager for saving particle data
-        if config.mode.WRITE_DATAFRAME:
-            logging.debug("Writing dataframe to hierarchical dataset...")
-            dataset_manager = event_dataset.HierarchicalEventDataset(os.path.join(results_path, "particle_dataset"))
-            job_id = int(os.environ.get("CONDOR_CLUSTER_ID", "0"))  # Extract from HTC job ID
-
-            # Get soft event property dictionary from the plasma event, if present
-            if plasma_object.meta is not None:
-                soft_dict = plasma_object.meta
+            """
+            Hadronize hard particles using Lund-String hadronization.
+            """
+            if config.jet.hadronization.STRING:
+                logging.info('String hadronizing in-medium result...')
+                AA_pythia_event = pythia.ape_to_pythia(hard_event)
+            elif config.mode.WRITE_HEPMC:
+                AA_pythia_event = pythia.ape_to_pythia(hard_event, hadronize=False)
             else:
-                soft_dict = {}
+                AA_pythia_event = None
+            """
+            Hadronize particles using fragmentation
+            """
+            if config.jet.hadronization.FRAG:
+                logging.info('Fragmenting hard particles...')
+                fragger = fragmentation.Fragger(seed=config.mode.SEED)
+                for particle in hard_event.particles:
+                    particle.fragz = fragger.frag(particle)
+                    particle.fragz0 = fragger.frag(particle, i=True)
+                logging.info('Fragmentation of hard particles complete.')
+            else:
+                logging.info('Skipping fragmentation of hard particles.')
 
-            # Create a config dictionary
-            flat_config = {}
-            for name, cls in inspect.getmembers(config, inspect.isclass):
-                flat_config.update(utilities.config_to_dict(cls, prefix=name))
+            ######################
+            # HepMC Event output #
+            ######################
+            """
+            Send the output of the Pythia events to a HepMC3 file.
+            """
+            if config.mode.WRITE_HEPMC:
+                logging.debug("Saving Medium HepMC3 file...")
+                hepmc_event = pythia.pythia_to_hepmc(AA_pythia_event, vt=tau_0 * np.cosh(etas_0), vx=x_0, vy=y_0, vz=tau_0 * np.sinh(etas_0), weight=event_weight)
+                hepmc_filename = f"results/hepmc/m/{random_label}.dat"
+                # os.remove(hepmc_filename)
+                with hp.open(hepmc_filename, "w") as f:
+                    f.write(hepmc_event)
+                logging.debug("Saved Medium HepMC3 file.")
 
-            # Save particles to hierarchical dataset
-            dataset_manager.save_job_output(
-                job_id=job_id,
-                hard_id=random_label,
-                soft_event_seed=seed,
-                event_record=hard_event,
-                soft_event_props=soft_dict,
-                config_dict=flat_config,
-            )
+                logging.debug("Saving Vacuum HepMC3 file...")
+                vac_hepmc_event = pythia.pythia_to_hepmc(vacuum_event_hadrons, vt=tau_0*np.cosh(etas_0), vx=x_0, vy=y_0, vz=tau_0*np.sinh(etas_0), weight=event_weight)
+                vac_hepmc_filename = f"results/hepmc/v/vac_{random_label}.dat"
+                # os.remove(hepmc_filename)
+                with hp.open(vac_hepmc_filename, "w") as f:
+                    f.write(vac_hepmc_event)
+                logging.debug("Saved Vacuum HepMC3 file.")
 
-            logging.info("Particle dataset saved successfully")
 
-        ##########################
-        # Optional visualization #
-        ##########################
-        if visualize:
-            logging.info('Visualizing...')
+            ####################################
+            # Hard Particle Dataset Management #
+            ####################################
+            # Initialize dataset manager for saving particle data
+            if config.mode.WRITE_DATAFRAME:
+                logging.debug("Writing dataframe to hierarchical dataset...")
+                dataset_manager = event_dataset.HierarchicalEventDataset(os.path.join(results_path, "particle_dataset"))
+                job_id = int(os.environ.get("CONDOR_CLUSTER_ID", "0"))  # Extract from HTC job ID
 
-            # plotting.plot_trajectories(hard_event, z_axis=None, rap_max=1)
-            if visualize_2D:
-                plotting.plot_parton_hadron(hard_event=hard_event, hadrons=AA_pythia_event, plasma_object=plasma_object,
-                                            rap_max=1.5)
-            if visualize_3Dz:
-                plotting.plot_trajectories(hard_event, z_axis="z", rap_max=None)
-            if visualize_3Detas:
-                plotting.plot_trajectories(hard_event, z_axis="etas", rap_max=None)
+                # Get soft event property dictionary from the plasma event, if present
+                if plasma_object.meta is not None:
+                    soft_dict = plasma_object.meta
+                else:
+                    soft_dict = {}
+
+                # Create a config dictionary
+                flat_config = {}
+                for name, cls in inspect.getmembers(config, inspect.isclass):
+                    flat_config.update(utilities.config_to_dict(cls, prefix=name))
+
+                # Save particles to hierarchical dataset
+                dataset_manager.save_job_output(
+                    job_id=job_id,
+                    hard_id=random_label,
+                    soft_event_seed=seed,
+                    event_record=hard_event,
+                    soft_event_props=soft_dict,
+                    config_dict=flat_config,
+                )
+
+                logging.info("Particle dataset saved successfully")
+
+            ##########################
+            # Optional visualization #
+            ##########################
+            if visualize:
+                logging.info('Visualizing...')
+
+                # plotting.plot_trajectories(hard_event, z_axis=None, rap_max=1)
+                if visualize_2D:
+                    plotting.plot_parton_hadron(hard_event=hard_event, hadrons=AA_pythia_event, plasma_object=plasma_object,
+                                                rap_max=1.5)
+                if visualize_3Dz:
+                    plotting.plot_trajectories(hard_event, z_axis="z", rap_max=None)
+                if visualize_3Detas:
+                    plotting.plot_trajectories(hard_event, z_axis="etas", rap_max=None)
 
     try:
         logging.debug("Cleaning up temporary event directory...")
@@ -615,6 +621,10 @@ try:
     except NameError:
         # No temp directory
         pass
+
+    # Shut down the manager when fully done
+    log_listener.stop()
+    mp_manager.shutdown()
 
     logging.info("All events complete. Have a nice day! :)")
 
