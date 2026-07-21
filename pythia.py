@@ -250,7 +250,7 @@ def phi_sample_embed(particles, weight):
 
 # Function to hadronize a list of particles already including colors and anticolors and get pythia event
 def ape_to_pythia(ape_event: hard_particles.EventRecord,
-                  seed=0, hadronize=True):
+                  seed=0, hadronize=True, quiet=True):
     logging.info('Preparing final state Pythia event...')
     # Settings
     max_had_runs = 10000
@@ -261,9 +261,10 @@ def ape_to_pythia(ape_event: hard_particles.EventRecord,
 
     # Instantiate Pythia
     pythia_had = pythia8.Pythia("", False)  # Print header = False
-    pythia_had.readString("Print:quiet = on")  # Don't print anything but the basics
-    pythia_had.readString("Print:init = off")  # Don't print all of the initialization business.
-    pythia_had.readString("Print:next = off")  # Don't print all of the event business when we hadronize.
+    if quiet:
+        pythia_had.readString("Print:quiet = on")  # Don't print anything but the basics
+        pythia_had.readString("Print:init = off")  # Don't print all of the initialization business.
+        pythia_had.readString("Print:next = off")  # Don't print all of the event business when we hadronize.
 
     # Use seed based on time
     pythia_had.readString("Random:setSeed = on")
