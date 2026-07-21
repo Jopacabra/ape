@@ -296,18 +296,20 @@ else:
 logging.info('Soft event created.')
 
 
-########################
-# Hard Event Evolution #
-########################
+####################
+# Hard Event Setup #
+####################
 # Global variables that will be filled on a per-worker basis
 _rng = None
 _nn = None
 _log_queue = None
+_medium = None
 
 # Particle evolution worker initializer
-def _worker_init(child_seeds, worker_counter, worker_counter_lock, log_queue):
-    global _rng, _nn, _log_queue
+def _worker_init(child_seeds, worker_counter, worker_counter_lock, log_queue, medium):
+    global _rng, _nn, _log_queue, _medium
     _log_queue = log_queue
+    _medium = medium
 
     # Remove any existing handlers and replace with QueueHandler
     root = logging.getLogger()
@@ -359,18 +361,16 @@ def should_evolve(particle):
         return False
     return True
 
-def treat_particle(particle, medium):
+def treat_particle(particle):
     """
     Evolve particle, then return modified particle and lists of emission momenta and emission coordinates
     """
-    global _rng, _nn, _log_queue
+    global _rng, _nn, _log_queue, _medium
     logging.debug('Particle {}...'.format(particle.printout()))
 
-    #########################
-    # Perform the evolution #
-    #########################
+    # Perform the evolution
     pT0 = particle.pT
-    emission_momenta, emission_coords, evolution_complete = parton_evolution.evolve_particle(particle, medium, _nn, rng=_rng)
+    emission_momenta, emission_coords, evolution_complete = parton_evolution.evolve_particle(particle, _medium, _nn, rng=_rng)
     pTF = particle.pT
     logging.debug(f"pT0: {pT0}, delta pT: {pTF - pT0} GeV")
 
@@ -411,10 +411,12 @@ try:
     with ProcessPoolExecutor(
             max_workers=max_workers,
             initializer=_worker_init,
-            initargs=(child_seeds, worker_counter, worker_counter_lock, log_queue)
+            initargs=(child_seeds, worker_counter, worker_counter_lock, log_queue, plasma_object)
     ) as executor:
 
-        # Do hard events
+        ###################
+        # Hard Event Loop #
+        ###################
         hard_event_records = np.array([])
         for i in range(num_hard_events):
             random_label = int(utilities.rng.uniform(1000000000, 9999999999, 1)[0])
@@ -491,7 +493,7 @@ try:
                 futures = {}
                 for p in round_particles:
                     if should_evolve(p):  # Only evolve accepted particles
-                        futures[executor.submit(treat_particle, p, plasma_object)] = p
+                        futures[executor.submit(treat_particle, p)] = p
 
                 # As they complete, spawn appropriate child particles
                 for future in as_completed(futures):
