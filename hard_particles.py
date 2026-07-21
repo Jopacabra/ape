@@ -639,20 +639,29 @@ class EventRecord(Generic[ParticleT]):
         # Radiation is always a live gluon at this spacetime position at the end of the record.
         new_tag = len(self.particles)
 
-        # Radiation has color relations with parent
+        # Radiation has color relations with parent -- perform color rotation appropriately
         if parent.isq:
-            emission_col = parent.col
-            emission_acol = parent.col + 1
-            parent.col = emission_acol
+            if parent.id > 0:  # Particle is a quark, it carries a color
+                emission_col = parent.col
+                new_color = parent.col + 1  # only one color available, so we can just increment
+                emission_acol = new_color
+                parent.col = emission_acol
+            else:  # Particle is an antiquark, it carries an anticolor
+                new_color = parent.acol + 1  # only one color available, so we can just increment
+                emission_col = new_color
+                emission_acol = parent.acol
+                parent.acol = emission_col
         elif parent.isg:
             a = utilities.rng.choice([0,1])
+            # Two colors available -- we increment the higher one to avoid possible singlet
+            new_color = np.amax([parent.col, parent.acol]) + 1
             if a == 0:
                 emission_col = parent.col
-                emission_acol = parent.col + 1
+                emission_acol = new_color
                 parent.col = emission_acol
             elif a == 1:
-                emission_col = parent.col + 1
-                emission_acol = parent.col
+                emission_col = new_color
+                emission_acol = parent.acol
                 parent.acol = emission_col
         else:
             emission_col = 0
