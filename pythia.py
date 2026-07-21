@@ -55,6 +55,14 @@ def scattering(pThatmin=config.jet.pythia.PTHATMIN, pThatmax=config.jet.pythia.P
             """
             info = pythia_process.infoPython()
 
+            # Ditch anything that threw an error:
+            if info.getAbortPartonLevel():
+                logging.warning("Pythia aborted parton level!")
+                return True
+            if info.tooLowPTmin():
+                logging.warning("Pythia pTmin too low error!")
+                return True
+
             # Rapidity is additive under boosts -- that's the point. Final hard scattering plane lab frame rapidity is
             # y_{lab} ~= y_{CM} +/- y_{hard}
             # where y_{CM} is the rapidity of the partonic hard scattering relative to the CM frame
@@ -247,13 +255,12 @@ def phi_sample_embed(particles, weight):
     return particles, weight
 
 
-
 # Function to hadronize a list of particles already including colors and anticolors and get pythia event
 def ape_to_pythia(ape_event: hard_particles.EventRecord,
                   seed=0, hadronize=True, quiet=True):
     logging.info('Preparing final state Pythia event...')
     # Settings
-    max_had_runs = 10000
+    max_had_runs = 1000
 
     ############################################
     # Set up Pythia instance for hadronization #
@@ -348,9 +355,11 @@ def ape_to_pythia(ape_event: hard_particles.EventRecord,
         # pythia_had.event.list()
 
         logging.info('Hadronization complete.')
+        return pythia_had.event, event_success
     else:
         logging.info('Skipping Pythia string hadronization...')
-    return pythia_had.event
+        return pythia_had.event
+
 
 def pythia_to_fastjet(pythia_had: pythia8.Event, rap_max: float=1.5, R: float=0.4, pTmin: float=0.0):
     """

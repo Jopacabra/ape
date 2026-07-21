@@ -456,7 +456,10 @@ try:
 
             if config.jet.hadronization.STRING:
                 logging.info('String hadronizing vacuum result...')
-                vacuum_event_hadrons = pythia.ape_to_pythia(hard_event)
+                vacuum_event_hadrons, pp_string_success = pythia.ape_to_pythia(hard_event)
+                if not pp_string_success:
+                    logging.info("pp event hadronization failure -- Aborting this event")
+                    continue
             elif config.mode.WRITE_HEPMC:
                 vacuum_event_hadrons = pythia.ape_to_pythia(hard_event, hadronize=False)
             else:
@@ -527,7 +530,10 @@ try:
             """
             if config.jet.hadronization.STRING:
                 logging.info('String hadronizing in-medium result...')
-                AA_pythia_event = pythia.ape_to_pythia(hard_event)
+                AA_pythia_event, AA_string_success = pythia.ape_to_pythia(hard_event, quiet=False)
+                if not AA_string_success:
+                    logging.info("AA event hadronization failure -- Aborting this event")
+                    continue
             elif config.mode.WRITE_HEPMC:
                 AA_pythia_event = pythia.ape_to_pythia(hard_event, hadronize=False)
             else:
