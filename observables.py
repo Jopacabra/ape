@@ -529,8 +529,8 @@ def fastjet_intrajetvnish_total_gammaref(jet: fastjet.PseudoJet=None, gamma: fas
                                          event: pythia8.Event=None, n=1, pT_min=0, flow="x",
                                          pt_weighting=0):
     """
-        Function to compute intrajet v_n harmonic with reference angle set to select on either x or z flow, ABOUT GAMMA.
-        """
+    Function to compute intrajet v_n harmonic with reference angle set to select on either x or z flow, ABOUT GAMMA.
+    """
 
     # Access final state particles
     if event is not None:
@@ -629,6 +629,41 @@ def fastjet_intrajetvnish_total_gammaref(jet: fastjet.PseudoJet=None, gamma: fas
         return np.absolute(avg_vn)
     else:
         return avg_vn
+
+# Signed acoplanarity in phi or eta
+def signed_deflection(jet: fastjet.PseudoJet=None, gamma: fastjet.PseudoJet=None, n=1, pT_min=0, dir="phi", phi0=0):
+    """
+    Function to compute signed acoplanarity in transverse or longitudinal direction
+    """
+    # First, compute the appropriate angles
+    if dir == "phi":
+        # Get phis
+        jet_phi = np.mod(jet.phi(), 2*np.pi)  # Modulus to get on [0. 2pi)
+        gamma_phi = np.mod(gamma.phi(), 2*np.pi)
+
+        # Determine angle opposite to the gamma and its quadrant, thereby the sign
+        gamma_aphi = np.mod(gamma_phi - np.pi, 2*np.pi)
+        if gamma_aphi >= 0 and gamma_aphi < np.pi/2:
+            # Quadrant 1
+            sign = +1
+        elif gamma_aphi >= np.pi/2 and gamma_aphi < np.pi:
+            # Quadrant 2
+            sign = -1
+        elif gamma_aphi >= np.pi and gamma_aphi < 3*np.pi/2:
+            # Quadrant 3
+            sign = +1
+        elif gamma_aphi >= 3*np.pi/2 and gamma_aphi < 2*np.pi:
+            # Quadrant 4
+            sign = -1
+
+        return sign * (np.mod(jet.phi(), np.pi/2) - np.mod(gamma.phi(), np.pi/2))
+    elif dir == "eta":
+        jet_eta = jet.eta()
+        gamma_eta = gamma.eta()
+        return None
+    else:
+        return None
+
 
 
 # Multiplicity calculation from hepmc file

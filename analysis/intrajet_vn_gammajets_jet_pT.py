@@ -64,7 +64,7 @@ num_x_bins = 5
 # Observables settings
 flow = "z"
 pt_weighting = 0  # Weight each particle's phase by p_T^(pt_weighting) when computing vn of each jet
-refaxis = "gamma"
+refaxis = "jet"
 plot_group = "diff"  # "diff", "both", "m", or "v"
 
 # Storage arrays
@@ -260,6 +260,13 @@ for case in ["v", "m"]:
     plt.ylabel(r"$|Q_1|$")
     plt.savefig(f"vn_vs_N_{case}.png")
 
+    # Store for later histogramming
+    if case == "v":
+        v_analyzed_weights = np.array(analyzed_weights)
+    elif case == "m":
+        m_analyzed_weights = np.array(analyzed_weights)
+
+    # Cast to numpy arrays
     print(np.nanmean(v1s))
     print(np.nanmax(v1s))
     print(np.nanmin(v1s))
@@ -431,19 +438,19 @@ if plot_group == "diff":
 elif plot_group == "m":
     # v1 -- AA
     axis.plot(cut_bin_cents, bin_vals_v1, marker='o', markersize=7, linestyle='-',
-              color=color[flow_i], linewidth=2, label=flow + r' AA $\Delta v_1$', zorder=3)
+              color=color[flow_i], linewidth=2, label=flow + r' AA $v_1$', zorder=3)
     axis.fill_between(cut_bin_cents, bin_vals_v1 - bin_errs_v1, bin_vals_v1 + bin_errs_v1,
                       color=color[flow_i], alpha=0.25, zorder=2)
 
     # v2 -- AA
     axis.plot(cut_bin_cents, bin_vals_v2, marker='x', markersize=8, linestyle='--',
-              color=color[flow_i + 1], linewidth=2, label=flow + r' AA $\Delta v_2$', zorder=3)
+              color=color[flow_i + 1], linewidth=2, label=flow + r' AA $v_2$', zorder=3)
     axis.fill_between(cut_bin_cents, bin_vals_v2 - bin_errs_v2, bin_vals_v2 + bin_errs_v2,
                       color=color[flow_i + 1], alpha=0.25, zorder=2)
 
     # v3 -- AA
     axis.plot(cut_bin_cents, bin_vals_v3, marker='^', markersize=7, linestyle=':',
-              color=color[flow_i + 2], linewidth=2, label=flow + r' AA $\Delta v_3$', zorder=3)
+              color=color[flow_i + 2], linewidth=2, label=flow + r' AA $v_3$', zorder=3)
     axis.fill_between(cut_bin_cents, bin_vals_v3 - bin_errs_v3, bin_vals_v3 + bin_errs_v3,
                       color=color[flow_i + 2], alpha=0.25, zorder=2)
 
@@ -451,19 +458,19 @@ elif plot_group == "m":
 elif plot_group == "v":
     # v1 -- pp
     axis.plot(cut_bin_cents, v_bin_vals_v1, marker='o', markersize=7, linestyle='-',
-              color=color[flow_i], linewidth=2, label=flow + r' pp $\Delta v_1$', zorder=3)
+              color=color[flow_i], linewidth=2, label=flow + r' pp $v_1$', zorder=3)
     axis.fill_between(cut_bin_cents, v_bin_vals_v1 - v_bin_errs_v1, v_bin_vals_v1 + v_bin_errs_v1,
                       color=color[flow_i], alpha=0.25, zorder=2)
 
     # v2 -- pp
     axis.plot(cut_bin_cents, v_bin_vals_v2, marker='x', markersize=8, linestyle='--',
-              color=color[flow_i + 1], linewidth=2, label=flow + r' pp $\Delta v_2$', zorder=3)
+              color=color[flow_i + 1], linewidth=2, label=flow + r' pp $v_2$', zorder=3)
     axis.fill_between(cut_bin_cents, v_bin_vals_v2 - v_bin_errs_v2, v_bin_vals_v2 + v_bin_errs_v2,
                       color=color[flow_i + 1], alpha=0.25, zorder=2)
 
     # v3 -- pp
     axis.plot(cut_bin_cents, v_bin_vals_v3, marker='^', markersize=7, linestyle=':',
-              color=color[flow_i + 2], linewidth=2, label=flow + r' pp $\Delta v_3$', zorder=3)
+              color=color[flow_i + 2], linewidth=2, label=flow + r' pp $v_3$', zorder=3)
     axis.fill_between(cut_bin_cents, v_bin_vals_v3 - v_bin_errs_v3, bin_vals_v3 + v_bin_errs_v3,
                       color=color[flow_i + 2], alpha=0.25, zorder=2)
 
@@ -471,19 +478,19 @@ elif plot_group == "v":
 elif plot_group == "both":
     # v1 -- pp
     axis.plot(cut_bin_cents, v_bin_vals_v1, marker='o', markersize=7, linestyle=':',
-              color=color[flow_i], linewidth=2, label=flow + r' pp $\Delta v_1$', zorder=3)
+              color=color[flow_i], linewidth=2, label=flow + r' pp $v_1$', zorder=3)
     axis.fill_between(cut_bin_cents, v_bin_vals_v1 - v_bin_errs_v1, v_bin_vals_v1 + v_bin_errs_v1,
                       color=color[flow_i], alpha=0.25, zorder=2)
 
     # v2 -- pp
     axis.plot(cut_bin_cents, v_bin_vals_v2, marker='x', markersize=8, linestyle=':',
-              color=color[flow_i + 1], linewidth=2, label=flow + r' pp $\Delta v_2$', zorder=3)
+              color=color[flow_i + 1], linewidth=2, label=flow + r' pp $v_2$', zorder=3)
     axis.fill_between(cut_bin_cents, v_bin_vals_v2 - v_bin_errs_v2, v_bin_vals_v2 + v_bin_errs_v2,
                       color=color[flow_i + 1], alpha=0.25, zorder=2)
 
     # v3 -- pp
     axis.plot(cut_bin_cents, v_bin_vals_v3, marker='^', markersize=7, linestyle=':',
-              color=color[flow_i + 2], linewidth=2, label=flow + r' pp $\Delta v_3$', zorder=3)
+              color=color[flow_i + 2], linewidth=2, label=flow + r' pp $v_3$', zorder=3)
     axis.fill_between(cut_bin_cents, v_bin_vals_v3 - v_bin_errs_v3, bin_vals_v3 + v_bin_errs_v3,
                       color=color[flow_i + 2], alpha=0.25, zorder=2)
 
@@ -534,11 +541,23 @@ axis3.set_xlabel(r"$\phi$")
 axis3.legend()
 fig3.savefig("vn_phi_hist.png", dpi=150, bbox_inches="tight", pad_inches=0.05)
 
+bins = np.linspace(10, 120, 30)
 fig4 = plt.figure(figsize=(8, 6))
 axis4 = fig4.add_subplot()
-axis4.hist(v_jet_pts, bins=100, color="g", alpha=0.5, label="pp")
-axis4.hist(m_jet_pts, bins=100, color="r", alpha=0.5, label="AA")
+axis4.hist(v_jet_pts, bins=bins, color="g", alpha=0.5, label="pp")
+axis4.hist(m_jet_pts, bins=bins, color="r", alpha=0.5, label="AA")
 axis4.set_xlabel(r"jet $p_T$")
+axis4.set_ylabel(r"$N$ Statistical")
 axis4.legend()
-fig4.savefig("vn_pT_hist.png", dpi=150, bbox_inches="tight", pad_inches=0.05)
+fig4.savefig("vn_pT_hist_stat.png", dpi=150, bbox_inches="tight", pad_inches=0.05)
+
+fig5 = plt.figure(figsize=(8, 6))
+axis5 = fig5.add_subplot()
+
+axis5.hist(v_jet_pts, bins=bins, color="g", alpha=0.5, label="pp", weights=v_analyzed_weights)
+axis5.hist(m_jet_pts, bins=bins, color="r", alpha=0.5, label="AA", weights=m_analyzed_weights)
+axis5.set_xlabel(r"jet $p_T$")
+axis5.set_ylabel(r"$N$ Physical")
+axis5.legend()
+fig5.savefig("vn_pT_hist_phys.png", dpi=150, bbox_inches="tight", pad_inches=0.05)
 
