@@ -33,19 +33,22 @@ def evolve_particle(particle : hard_particles.Particle, plasma_object : plasma.p
     # Start Radiation Tracker, if necessary
     if config.jet.RAD_MODEL == "aniso_NN":
         x_min = -2  # minimum power of 10 in x to compute
-        kz_points = 50  # Number of evenly spaced points in x to compute
-        kperp_points = 50  # Even number of lin-spaced points in kx and ky to compute
-        x_values = np.logspace(x_min, -0.05, kperp_points//2)
+        num_k_points = 20  # EVEN number of lin-spaced points in kz to compute
+        num_k_perp_points = 20  # EVEN number of lin-spaced points in kx & ky to compute
+        x_values = np.logspace(x_min, -0.05, num_k_points//2)
         k_pos_values = x_values*particle.E0
-        # k_pos_values = np.linspace(0.01, 1, kperp_points // 2)*particle.E0
         k_values = np.concatenate((-k_pos_values, k_pos_values))
 
+        # Narrower band in k_perp
+        k_perp_pos_values = np.linspace(0.01, 5, num_k_perp_points//2)
+        k_perp_values = np.concatenate((-k_perp_pos_values, k_perp_pos_values))
+
         # Find energy of emission at each coordinate
-        kxkx, kyky, kzkz = np.meshgrid(k_values, k_values, k_values, indexing='ij')
+        kxkx, kyky, kzkz = np.meshgrid(k_perp_values, k_perp_values, k_values, indexing='ij')
         E_values = np.sqrt(kxkx ** 2 + kyky ** 2 + kzkz ** 2)
 
         # Construct zeroed radiation distribution array
-        rad_dist = np.zeros(shape=(kperp_points, kperp_points, kz_points))
+        rad_dist = np.zeros(shape=(num_k_perp_points, num_k_perp_points, num_k_points))
         total_number = 0
         total_energy = 0
 
@@ -91,7 +94,7 @@ def evolve_particle(particle : hard_particles.Particle, plasma_object : plasma.p
                 if particle.E < config.jet.EMIN:
                     logging.debug(
                         "Particle energy approaching medium scale. Sampling final momentum from thermal dist...")
-                    particle.thermal_sample()  # Samples and sets a final momentum from a thermal distribution
+                    particle.thermal_sample()  # Samples and sets in-place a final momentum from a thermal distribution
                     return emission_momenta_total, emission_coords_total, False  # Don't bother to freestream -- save time
 
                 #############
@@ -107,7 +110,8 @@ def evolve_particle(particle : hard_particles.Particle, plasma_object : plasma.p
 
                         # Compute radiation distribution from this step -- returned in (kx, ky, kz) in parton frame
                         dtau_rad_dist = pi.aniso_rad_dist(particle=particle, medium=plasma_object, dtau=dtau,
-                                                                          kx_values=k_values, ky_values=k_values,
+                                                                          kx_values=k_perp_values,
+                                                                          ky_values=k_perp_values,
                                                                           kz_values=k_values, nn=nn)
 
 
@@ -130,7 +134,7 @@ def evolve_particle(particle : hard_particles.Particle, plasma_object : plasma.p
                         #                                                    kz_values=k_values)
 
 
-                        # Add rotated step distribution to the total distribution
+                        # Add step distribution to the total distribution
                         rad_dist = rad_dist + dtau_rad_dist
                         dt = time.time() - t0
                         logging.debug(f"Radiation distribution computed in {dt}s")
@@ -138,26 +142,24 @@ def evolve_particle(particle : hard_particles.Particle, plasma_object : plasma.p
                         # Compute integral of complete radiation distribution
                         # (np.trapezoid handles integration of arbitrary spacing via coordinates)
                         t0 = time.time()
-                        fixed_gluons = True
+                        fixed_gluons = True # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
                         poisson_N = True
                         poisson_E = False
                         if fixed_gluons:
-                            """!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"""
                             # Fix analytic expectation for gluon emissions per step
                             total_number += pi.N_gluons(particle=particle, medium=plasma_object, dtau=dtau)
                             total_energy += pi.E_gluons(particle=particle, medium=plasma_object, dtau=dtau)
-                            """!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"""
                         else:
                             total_number += np.trapezoid(
                                 np.trapezoid(
                                     np.trapezoid(dtau_rad_dist, k_values, axis=2),  # Integrate over kz -> shape: (n_kx, n_ky)
-                                                          k_values, axis=1),  # Integrate over ky -> shape: (n_kx)
-                                                          k_values, axis=0)  # Integrate over kx -> scalar
+                                                          k_perp_values, axis=1),  # Integrate over ky -> shape: (n_kx)
+                                                          k_perp_values, axis=0)  # Integrate over kx -> scalar
                             total_energy += np.trapezoid(
                                 np.trapezoid(
                                     np.trapezoid(dtau_rad_dist * x_values * particle.E0, k_values, axis=2),  # Integrate over kz -> shape: (n_kx, n_ky)
-                                                          k_values, axis=1),  # Integrate over ky -> shape: (n_kx)
-                                                          k_values, axis=0)  # Integrate over kx -> scalar
+                                                          k_perp_values, axis=1),  # Integrate over ky -> shape: (n_kx)
+                                                          k_perp_values, axis=0)  # Integrate over kx -> scalar
                             logging.debug(f"Radiation number distribution integral: {total_number}")
                             logging.debug(f"Radiation energy distribution integral: {total_energy}")
 
@@ -176,7 +178,7 @@ def evolve_particle(particle : hard_particles.Particle, plasma_object : plasma.p
                         for i in range(n):
                             # Sample the distribution for emission kinematics in the radiation frame
                             k = plasma_interaction.sample_rad_dist(rad_dist, N_samples=1,
-                                                                   kx_values=k_values, ky_values=k_values,
+                                                                   kx_values=k_perp_values, ky_values=k_perp_values,
                                                                    kz_values=k_values)
                             logging.debug(f"Emitting gluon! Radiation frame info:")
 
@@ -236,6 +238,7 @@ def evolve_particle(particle : hard_particles.Particle, plasma_object : plasma.p
                             if n > 0:
                                 rad_dist = ((total_number - n * N_norm) / total_number) * rad_dist
                                 total_number -= n * N_norm
+                                total_energy = 0  # reset energy
 
                         # Find the total momentum of the emitted particles
                         if n == 0:
