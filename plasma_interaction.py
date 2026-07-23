@@ -671,7 +671,7 @@ def rotate_rad_dist(particle: hard_particles.Particle, medium: plasma.plasma, ra
 def E_gluons(particle: hard_particles.Particle, medium: plasma.plasma, dtau: float):
     """
     This function returns the analytically computed energy of emitted gluons at first order in opacity with infinite
-    kinematic bounds, as in https://arxiv.org/pdf/nucl-th/0012092 Eq. 9
+    kinematic bounds, as in https://arxiv.org/pdf/nucl-th/0012092 Eq. 9, for a single step.
     """
     # Gather particle and medium properties.
     HBARC = 0.197327  # GeV·fm
@@ -698,7 +698,7 @@ def E_gluons(particle: hard_particles.Particle, medium: plasma.plasma, dtau: flo
     # The (z-z0) factor should be identified with the current pathlength in the plasma, particle.tau. This retains the
     # overall L^2 behavior of the function. The $\int dz$ factor gives us the pathlength in this step.
     intdz = delta_L / HBARC
-    L0 = (min(particle.tau - medium.t0, 0) / HBARC)
+    L0 = (max(particle.tau - medium.t0, 0) / HBARC)  # Pathlength already traversed in the plasma at beginning of step
     L = (L0 + L0 + intdz) / 2  # Average pathlength in plasma of step, preventing 0.
     mu = mu_DeBye(T=temp)
 
@@ -741,7 +741,7 @@ def N_gluons(particle: hard_particles.Particle, medium: plasma.plasma, dtau: flo
     # The (z-z0) factor should be identified with the current pathlength in the plasma, particle.tau. This retains the
     # overall L^2 behavior of the function. The $\int dz$ factor gives us the pathlength in this step.
     intdz = delta_L / HBARC
-    L0 = (min(particle.tau - medium.t0, 0) / HBARC)
+    L0 = (max(particle.tau - medium.t0, 0) / HBARC)
     L = (L0 + L0 + intdz) / 2  # Average pathlength in plasma of step, preventing 0.
     mu = mu_DeBye(T=temp)
     xmin = mu / E
