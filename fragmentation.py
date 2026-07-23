@@ -52,6 +52,10 @@ class Fragger:
             p_z_val = self.pz(parton_pid, z_val, parton_pT)
             p_z_array.append(p_z_val)
         max_p_z = np.amax(p_z_array)
+        if max_p_z < 0:
+            logging.warning("Fragmentation error, P(z) negative everywhere.")
+            print(f"P(z): {p_z_array}")
+            return 0
 
         # Sample a z value from the p(z) distribution
         z_val = np.array([])
