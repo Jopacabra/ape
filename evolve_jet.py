@@ -503,13 +503,16 @@ try:
                     # Get result of this process
                     modified_particle, emission_momenta, emission_coords = future.result()
 
-                    # Overwrite particle with modified particle
-                    hard_event.particles[modified_particle.tag] = modified_particle
+                    # Overwrite live particle with modified particle
+                    live_tag = modified_particle.tag
+                    hard_event.particles[live_tag] = modified_particle
 
-                    # Spawn child particles
+                    # Spawn child particles, color rotating our live particle where necessary
+                    og_tag = int(modified_particle.mother1)  # Modified particle's vacuum parent
+                    color_target_tag = live_tag  # Modified particle itself gets the color modification
                     if round_no < max_rad_gens:  # Only create new particles for the first round of emissions
                         for j in range(0, len(emission_momenta)):
-                            hard_event.spawn_radiation(modified_particle.tag, emission_momenta[j], emission_coords[j])
+                            hard_event.spawn_radiation(og_tag, color_target_tag, emission_momenta[j], emission_coords[j])
                     else:
                         pass
 

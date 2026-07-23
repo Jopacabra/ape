@@ -234,7 +234,7 @@ def scattering(pThatmin=config.jet.pythia.PTHATMIN, pThatmax=config.jet.pythia.P
 
     # Create a list of ape hard_particles.Particle objects
     # num_particles = len(record.particles())
-    for i, particle in enumerate(particle_list):
+    for i, particle in zip(index_list, particle_list):
         ape_particle = hard_particles.Particle.from_pythia(particle, tau=tau, x=x, y=y, etas=etas, tag=i)
         output_particles.append(ape_particle)
 
@@ -460,6 +460,9 @@ def pythia_to_hepmc(pythia_event: pythia8.Event, event_no=0, vx=None, vy=None, v
 
     # Second pass: build vertices from mother-daughter relationships
     for pythia_idx, p in enumerate(particles):
+        # Skip the first element (represents event as a whole)
+        if pythia_idx == 0: continue
+
         mother1 = int(p.mother1())
         mother2 = int(p.mother2())
 

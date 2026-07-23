@@ -347,6 +347,14 @@ class Particle:
     def copy(self) -> "Particle":
         return copy.deepcopy(self)
 
+    def set_decayed(self, daughter1=None, daughter2=None):
+        """ Set status to negative """
+        self.status = int((-1) * abs(self.status))
+        if daughter1 is not None:
+            self.daughter1 = daughter1
+        if daughter2 is not None:
+            self.daughter2 = daughter2
+
     def spawn_child(self, **overrides: Any) -> "Particle":
         child = copy.deepcopy(self)
         for k, v in overrides.items():
@@ -619,50 +627,56 @@ class EventRecord(Generic[ParticleT]):
                 # Update daughter tags and status of the original particle to include the child
                 p.status = int(-1*p.status)
                 p.daughter1 = n
-                p.daughter2 = 0
+                p.daughter2 = n
 
                 # Create the new child particle as a copy, updating mothers, daughters, and tag
-                child = p.spawn_child(mother1=p.tag, mother2=0, daughter1=0, daughter2=0, tag=n, status=23)
+                child = p.spawn_child(mother1=p.tag, mother2=p.tag, daughter1=0, daughter2=0, tag=n, status=23)
 
                 # Append child particle to event record
                 self.append(child)
 
         logging.debug(f"Final event record: {len(self.particles)} particles")
 
-
-    def spawn_radiation(self, tag, k, coords) -> "Particle":
+    def spawn_radiation(self, parent_tag, color_target_tag, k, coords) -> "Particle":
         """
-        Spawn a radiated gluon at the current spacetime position with lab frame momentum k.
+        Spawn a radiated gluon at the given spacetime position with lab frame momentum k
+        Adjust children of parent specified with "parent_tag". Add the radiated gluon and color rotate
+        the particle specified with "color_target_tag" appropriately.
         """
-        parent = self.particles[tag]
+        color_target = self.particles[color_target_tag]
 
         # Radiation is always a live gluon at this spacetime position at the end of the record.
-        new_tag = len(self.particles)
+        rad_tag = len(self.particles)
 
-        # Radiation has color relations with parent -- perform color rotation appropriately
-        if parent.isq:
-            if parent.id > 0:  # Particle is a quark, it carries a color
-                emission_col = parent.col
-                new_color = parent.col + 1  # only one color available, so we can just increment
+        # Color target is now a simple decay product (https://pythia.org//latest-manual/ParticleProperties.html)
+        color_target.mother2 = 0
+
+        # Radiation has color relations with color_target -- perform color rotation appropriately
+        if color_target.isq:
+            if color_target.id > 0:  # Particle is a quark, it carries a color
+                emission_col = color_target.col
+                new_color = color_target.col + 1  # only one color available, so we can just increment
                 emission_acol = new_color
-                parent.col = emission_acol
+                color_target.col = emission_acol
             else:  # Particle is an antiquark, it carries an anticolor
-                new_color = parent.acol + 1  # only one color available, so we can just increment
+                new_color = color_target.acol + 1  # only one color available, so we can just increment
                 emission_col = new_color
-                emission_acol = parent.acol
-                parent.acol = emission_col
-        elif parent.isg:
+                emission_acol = color_target.acol
+                color_target.acol = emission_col
+        elif color_target.isg:
             a = utilities.rng.choice([0,1])
             # Two colors available -- we increment the higher one to avoid possible singlet
-            new_color = np.amax([parent.col, parent.acol]) + 1
+            new_color = np.amax([color_target.col, color_target.acol]) + 1
             if a == 0:
-                emission_col = parent.col
+                emission_col = color_target.col
                 emission_acol = new_color
-                parent.col = emission_acol
+                color_target.col = emission_acol
             elif a == 1:
                 emission_col = new_color
-                emission_acol = parent.acol
-                parent.acol = emission_col
+                emission_acol = color_target.acol
+                color_target.acol = emission_col
+            else:
+                print("Uh-oh...")
         else:
             emission_col = 0
             emission_acol = 0
@@ -679,17 +693,20 @@ class EventRecord(Generic[ParticleT]):
             scalein=np.sqrt(np.dot(k,k)),  # Scale of emission ??? Need to check this.
             col=emission_col,  # Splits color from parent
             acol=emission_acol,
-            tag=new_tag,  # No tag, since it is unplaced in the event record
+            tag=rad_tag,  # New tag, since it is unplaced in the event record
             status=23,  # standard Pythia status for hadronization
-            mother1=tag,  # Radiated by this particle
+            mother1=parent_tag,  # Radiated by this particle
             mother2=0,
             daughter1=0,  # No radiation from this particle yet, so no daughters
             daughter2=0,
         )
 
-        # Update parent particle's daughters
+        # Add radiation to event record and update parent particle's daughters
         self.append(emission)
-        self.particles[tag].daughter1 = new_tag
+        if self.particles[parent_tag].daughter1 == 0:  # This is the first daughter particle
+            self.particles[parent_tag].daughter1 = rad_tag
+        else:  # This is a subsequent daughter. daughter2 is the final index of radiated particles, so iteratively set
+            self.particles[parent_tag].daughter2 = rad_tag
 
         return emission
 
