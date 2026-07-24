@@ -982,10 +982,10 @@ def sample_rad_dist(rad_dist, kx_values, ky_values, kz_values, N_samples=1):
     # Convert flat indices back to 3D grid indices
     ikx, iky, ikz = np.unravel_index(flat_indices, rad_dist.shape)
 
-    # Look up the corresponding coordinate values
-    sampled_kz = kz_values[ikz]
-    sampled_kx = kx_values[ikx]
-    sampled_ky = ky_values[iky]
+    # Look up the corresponding coordinate values and add jitter about the bin, so we don't sample exactly on the points
+    sampled_kx = kx_values[ikx] + rng.uniform(-0.5, 0.5, size=N_samples) * dkx[ikx]
+    sampled_ky = ky_values[iky] + rng.uniform(-0.5, 0.5, size=N_samples) * dky[iky]
+    sampled_kz = kz_values[ikz] + rng.uniform(-0.5, 0.5, size=N_samples) * dkz[ikz]
 
     # Stack values
     emission_momentum = np.column_stack([sampled_kx, sampled_ky, sampled_kz])

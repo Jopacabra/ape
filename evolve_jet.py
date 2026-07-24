@@ -450,7 +450,7 @@ try:
                 etas_0 = 0.0
 
             logging.info(f"Embedding hard scattering at ({tau_0}, {x_0}, {y_0}, {etas_0})")
-            hard_event, event_weight = pythia.scattering(tau=tau_0, x=x_0, y=y_0, etas=etas_0, pythia_event=False, seed=seed + i)
+            hard_event, event_weight = pythia.scattering(tau=tau_0, x=x_0, y=y_0, etas=etas_0, pythia_event=False, seed=seed + i, quiet=True)
             num_hard_particles = len(hard_event.particles)
             logging.info('Hard scattering done.')
 
@@ -533,7 +533,7 @@ try:
             """
             if config.jet.hadronization.STRING:
                 logging.info('String hadronizing in-medium result...')
-                AA_pythia_event, AA_string_success = pythia.ape_to_pythia(hard_event, quiet=False)
+                AA_pythia_event, AA_string_success = pythia.ape_to_pythia(hard_event, quiet=True)
                 if not AA_string_success:
                     logging.info("AA event hadronization failure -- Aborting this event")
                     continue
