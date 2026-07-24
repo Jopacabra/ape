@@ -668,12 +668,15 @@ def signed_deflection(jet: fastjet.PseudoJet=None, gamma: fastjet.PseudoJet=None
 
 # Multiplicity calculation from hepmc file
 def hepmc_N(hepmc_event: pyhepmc.GenEvent,
-              rap_min: float=0.0, rap_max: float=1.5,
-              pTmin: float=0.0, pTmax: float=100.0, pT_bins: np.ndarray=None):
+            rap_min: float=0.0, rap_max: float=1.5,
+            pTmin: float=0.0, pTmax: float=100.0, pT_bins: np.ndarray=None,
+            include=None, exclude=None):
     """
     Function to compute multiplicity as a function of pT for a HepMC event
     """
     # Access numpy interface of event object
+    if include is None:
+        include = [211]
     particles = hepmc_event.numpy.particles
 
     # Compute filter quantities
@@ -690,7 +693,12 @@ def hepmc_N(hepmc_event: pyhepmc.GenEvent,
 
     # Filter
     ma = particles.status == 1  # Only consider final state particles
-    # ma &= np.abs(particles.pid) == 211  # Only consider charged pions
+    if include is not None:
+        for ipid in include:
+            ma &= np.abs(particles.pid) == ipid
+    elif exclude is not None:
+        for epid in exclude:
+            ma &= np.abs(particles.pid) != epid
     ma &= np.abs(rap) <= rap_max  # Cut on rapidity
     if rap_min > 0.0:
         ma &= np.abs(rap) > rap_min  # Cut on rapidity
@@ -707,3 +715,66 @@ def hepmc_N(hepmc_event: pyhepmc.GenEvent,
     pT_counts, _ = np.histogram(pT, bins=pT_bins)
 
     return pT_counts, pT_bins
+
+
+# Multiplicity calculation from hepmc file, sorted per pid
+def hepmc_N_PID(hepmc_event: pyhepmc.GenEvent,
+            rap_min: float=0.0, rap_max: float=1.5,
+            pTmin: float=0.0, pTmax: float=100.0, pT_bins: np.ndarray=None,
+            include=None, exclude=None):
+    """
+    Function to compute multiplicity as a function of pT for a HepMC event,
+    returning a separate histogram for each unique particle type (by |pid|).
+
+    Returns
+    -------
+    dict
+        Keys are unique absolute PIDs (int). Values are tuples of
+        (counts, bin_centers, pT_bins) — ready to pass directly to
+        matplotlib's plt.bar / plt.step / plt.plot.
+    """
+    # Access numpy interface of event object
+    particles = hepmc_event.numpy.particles
+
+    # Compute filter quantities
+    E = particles.e
+    px = particles.px
+    py = particles.py
+    pz = particles.pz
+    with np.errstate(divide='ignore', invalid='ignore', over='ignore'):
+        # Protect denominator first
+        denominator = np.where(E > pz, E - pz, np.finfo(float).tiny)
+        rap = 0.5 * np.log((E + pz) / denominator)
+    pT = np.hypot(px, py)
+
+    # Base filter: final state, rapidity window, pT window
+    ma = particles.status == 1
+    ma &= np.abs(rap) <= rap_max
+    if rap_min > 0.0:
+        ma &= np.abs(rap) > rap_min
+    ma &= pT >= pTmin
+    ma &= pT <= pTmax
+    if include is not None:
+        for ipid in include:
+            ma &= np.abs(particles.pid) == ipid
+    elif exclude is not None:
+        for epid in exclude:
+            ma &= np.abs(particles.pid) != epid
+
+    # Build bin edges and centers once
+    if pT_bins is None:
+        pT_bins = np.linspace(pTmin, pTmax, 10)
+    bin_centers = 0.5 * (pT_bins[:-1] + pT_bins[1:])
+
+    # Apply base mask
+    pT_masked  = pT[ma]
+    pid_masked = np.abs(particles.pid[ma])
+
+    # Histogram per unique PID
+    results = {}
+    for pid in np.unique(pid_masked):
+        pid_sel = pid_masked == pid
+        counts, _ = np.histogram(pT_masked[pid_sel], bins=pT_bins)
+        results[int(pid)] = (counts, bin_centers, pT_bins)
+
+    return results
