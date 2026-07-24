@@ -959,10 +959,18 @@ def sample_rad_dist(rad_dist, kx_values, ky_values, kz_values, N_samples=1):
     Function to sample radiation distribution for kx, ky, kz.
     Treat dI/(dxdkxdky) as an (unnormalized) 3D probability density and draw N_samples points (kx, ky, kz) from it.
     """
-
     # Build a normalized flat PDF, then a CDF
-    I_flat = rad_dist.ravel()
-    I_flat_pos = np.clip(I_flat, 0, None)  # ensure non-negative
+    # Compute bin widths using gradient (handles non-uniform spacing)
+    dkx = np.gradient(kx_values)  # shape: (len(kx_values),)
+    dky = np.gradient(ky_values)  # shape: (len(ky_values),)
+    dkz = np.gradient(kz_values)  # shape: (len(kz_values),)
+
+    # Build 3D volume element array via outer products
+    dV = dkx[:, None, None] * dky[None, :, None] * dkz[None, None, :]  # shape: (Nkx, Nky, Nkz)
+
+    # Flatten the 3D intensity array into a 1D array of probabilities (note multiplication by bin volume)
+    I_flat = (rad_dist * dV).ravel()
+    I_flat_pos = np.clip(I_flat, 0, None)  # ensure non-negative  # ensure non-negative
     pdf = I_flat_pos / I_flat_pos.sum()  # normalize to sum to 1
     cdf = np.cumsum(pdf)  # build CDF
     cdf[-1] = 1.0  # Force exact upper bound — removes all floating point slop
