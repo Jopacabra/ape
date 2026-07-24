@@ -489,8 +489,9 @@ def aniso_rad_dist(particle: hard_particles.Particle, medium: plasma.plasma,
 
     Returns in the parton frame organized (kx, ky, kz)
     """
-    assert len(ky_values) % 2 == 0  # Array has an even number of entries
-    # assert np.array_equal(ky_values, -ky_values[::-1])  # Array is symmetric about 0
+    # assert len(ky_values) % 2 == 0  # Array has an even number of entries
+    assert np.array_equal(ky_values, -ky_values[::-1])  # Array is symmetric about 0
+    assert np.all(kz_values > 0), "kz_values must contain only positive numbers"
     hbarc = 0.1973269804  # GeV * fm
 
     # Gather particle and medium properties.
@@ -538,14 +539,11 @@ def aniso_rad_dist(particle: hard_particles.Particle, medium: plasma.plasma,
         T=temp,
         g=config.constants.G,
         kx_values=kx_values,
-        ky_values=ky_values[len(ky_values) // 2 ::],  # Compute only for positive ky values
-        kz_values=kz_values[len(kz_values) // 2 ::]  )  # Compute only for positive kz values
+        ky_values=ky_values[ky_values >= 0],  # Compute only for ky >= 0
+        kz_values=kz_values)  # Should pass only positive kz values
 
-    # Mirror across ky -- Flip array, then concat along that axis.
-    dtau_rad_dist = np.concat((np.flip(dtau_rad_dist, axis=1), dtau_rad_dist), axis=1)
-
-    # Fill zeroes for negative kz values and concat along that axis
-    dtau_rad_dist = np.concat((np.zeros_like(dtau_rad_dist), dtau_rad_dist), axis=2)
+    # Mirror across ky -- Flip array excluding zero element, then concat along that axis.
+    dtau_rad_dist = np.concat((np.flip(dtau_rad_dist[:, 1:, :], axis=1), dtau_rad_dist), axis=1)
 
     return CR * dtau_rad_dist
 
