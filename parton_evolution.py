@@ -119,6 +119,8 @@ def evolve_particle(particle : hard_particles.Particle, plasma_object : plasma.p
                                                         num_k_perp_points // 2)
                         k_perp_values = np.concatenate((-np.flip(k_perp_pos_values[1:]), k_perp_pos_values))
 
+                        _, _, x_grid = np.meshgrid(k_perp_values, k_perp_values, x_values, indexing='ij')
+
                         emission_momenta = []
 
                         # Compute radiation distribution from this step -- returned in (kx, ky, kz) in parton frame
@@ -129,7 +131,6 @@ def evolve_particle(particle : hard_particles.Particle, plasma_object : plasma.p
 
                         # Compute integral of complete radiation distribution
                         # (np.trapezoid handles integration of arbitrary spacing via coordinates)
-                        t0 = time.time()
                         if fixed_norm:
                             # Fix analytic expectation for gluon emissions per step
                             total_number = pi.N_gluons(particle=particle, medium=plasma_object, dtau=dtau)
@@ -142,7 +143,7 @@ def evolve_particle(particle : hard_particles.Particle, plasma_object : plasma.p
                                                           k_perp_values, axis=0)  # Integrate over kx -> scalar
                             total_energy += np.trapezoid(
                                 np.trapezoid(
-                                    np.trapezoid(dtau_rad_dist * x_values * particle.E0, k_values, axis=2),  # Integrate over kz -> shape: (n_kx, n_ky)
+                                    np.trapezoid(dtau_rad_dist * x_grid * particle.E0, k_values, axis=2),  # Integrate over kz -> shape: (n_kx, n_ky)
                                                           k_perp_values, axis=1),  # Integrate over ky -> shape: (n_kx)
                                                           k_perp_values, axis=0)  # Integrate over kx -> scalar
                             logging.debug(f"Radiation number distribution integral: {total_number}")
@@ -156,7 +157,7 @@ def evolve_particle(particle : hard_particles.Particle, plasma_object : plasma.p
                             # Sample the distribution for emission kinematics in the radiation frame
                             k = plasma_interaction.sample_rad_dist(dtau_rad_dist, N_samples=1,
                                                                    kx_values=k_perp_values, ky_values=k_perp_values,
-                                                                   kz_values=k_values)
+                                                                   kz_values=k_values, mu=mu, E=particle.E0)
                             logging.debug(f"Emitting gluon! Radiation frame info:")
 
                             # If we rescale energies, do it!

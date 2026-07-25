@@ -952,7 +952,7 @@ def N_gluons_fk(particle: hard_particles.Particle, medium: plasma.plasma, dtau: 
     return CR * np.trapezoid(y=int_vals, x=x_vals)
 
 
-def sample_rad_dist(rad_dist, kx_values, ky_values, kz_values, N_samples=1):
+def sample_rad_dist(rad_dist, kx_values, ky_values, kz_values, N_samples=1, kin_cut=True, mu=0.3, E=10):
     """
     Function to sample radiation distribution for kx, ky, kz.
     Treat dI/(dxdkxdky) as an (unnormalized) 3D probability density and draw N_samples points (kx, ky, kz) from it.
@@ -973,17 +973,38 @@ def sample_rad_dist(rad_dist, kx_values, ky_values, kz_values, N_samples=1):
     cdf = np.cumsum(pdf)  # build CDF
     cdf[-1] = 1.0  # Force exact upper bound — removes all floating point slop
 
-    # Draw uniform samples and find where they land in the CDF
-    uniform_samples = 1.0 - rng.uniform(size=N_samples)
-    flat_indices = np.searchsorted(cdf, uniform_samples, side="right")  # shape: (N_samples,)
+    while True:
+        # Draw uniform samples and find where they land in the CDF
+        uniform_samples = 1.0 - rng.uniform(size=N_samples)
+        flat_indices = np.searchsorted(cdf, uniform_samples, side="right")  # shape: (N_samples,)
 
-    # Convert flat indices back to 3D grid indices
-    ikx, iky, ikz = np.unravel_index(flat_indices, rad_dist.shape)
+        # Convert flat indices back to 3D grid indices
+        ikx, iky, ikz = np.unravel_index(flat_indices, rad_dist.shape)
 
-    # Look up the corresponding coordinate values and add jitter about the bin, so we don't sample exactly on the points
-    sampled_kx = kx_values[ikx] + rng.uniform(-0.5, 0.5, size=N_samples) * dkx[ikx]
-    sampled_ky = ky_values[iky] + rng.uniform(-0.5, 0.5, size=N_samples) * dky[iky]
-    sampled_kz = kz_values[ikz] + rng.uniform(-0.5, 0.5, size=N_samples) * dkz[ikz]
+        # Look up the corresponding coordinate values and add jitter about the bin, so we don't sample exactly on the points
+        sampled_kx = kx_values[ikx] + rng.uniform(-0.5, 0.5, size=N_samples) * dkx[ikx]
+        sampled_ky = ky_values[iky] + rng.uniform(-0.5, 0.5, size=N_samples) * dky[iky]
+        sampled_kz = kz_values[ikz] + rng.uniform(-0.5, 0.5, size=N_samples) * dkz[ikz]
+
+        if kin_cut:
+            failed = False
+            # Check if the sampled point is within the kinematic cuts
+            for kx, ky, kz in zip(sampled_kx, sampled_ky, sampled_kz):
+                kperp2 = (kx**2 + ky**2)
+                x = kz / E
+                if ((kperp2 >= mu**2) and (kperp2 < (4*(E**2) * min(x**2, (1-x)**2) - mu**2)) and (x > mu/(2*E))
+                        and (x < 1 - mu/(2*E))):
+                    pass  # Success
+                else:
+                    failed = True
+                    break
+            if failed:
+                continue  # Sample another set.
+            break  # Successful cut!
+
+
+        else:
+            break
 
     # Stack values
     emission_momentum = np.column_stack([sampled_kx, sampled_ky, sampled_kz])
