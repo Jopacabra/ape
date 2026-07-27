@@ -973,7 +973,8 @@ def sample_rad_dist(rad_dist, kx_values, ky_values, kz_values, N_samples=1, kin_
     cdf = np.cumsum(pdf)  # build CDF
     cdf[-1] = 1.0  # Force exact upper bound — removes all floating point slop
 
-    while True:
+    failed = False
+    for i in np.arange(0, 1000):  # Limit to 1000 attempts, so we can't have any soft locking.
         # Draw uniform samples and find where they land in the CDF
         uniform_samples = 1.0 - rng.uniform(size=N_samples)
         flat_indices = np.searchsorted(cdf, uniform_samples, side="right")  # shape: (N_samples,)
@@ -1005,6 +1006,9 @@ def sample_rad_dist(rad_dist, kx_values, ky_values, kz_values, N_samples=1, kin_
 
         else:
             break
+
+    if failed:
+        return None
 
     # Stack values
     emission_momentum = np.column_stack([sampled_kx, sampled_ky, sampled_kz])

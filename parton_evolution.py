@@ -158,6 +158,10 @@ def evolve_particle(particle : hard_particles.Particle, plasma_object : plasma.p
                             k = plasma_interaction.sample_rad_dist(dtau_rad_dist, N_samples=1,
                                                                    kx_values=k_perp_values, ky_values=k_perp_values,
                                                                    kz_values=k_values, mu=mu, E=particle.E0)
+                            if k is None:
+                                logging.warning("Gluon kinematics rejected. Skipping emissions.")
+                                n = 0
+                                break
                             logging.debug(f"Emitting gluon! Radiation frame info:")
 
                             # If we rescale energies, do it!
@@ -209,6 +213,10 @@ def evolve_particle(particle : hard_particles.Particle, plasma_object : plasma.p
 
                             # Only reset if this energy was "given a chance" to emit
                             total_energy = 0
+
+                            # Append momenta and coords to complete evolution list
+                            for i in np.arange(len(emission_momenta)):
+                                emission_momenta_total.append(emission_momenta[i])
 
                         # Create particle delta opposite to the total emitted gluon momentum in the lab coord. system
                         rad_delta = hard_particles.ParticleDelta(dpx=-total_k[0], dpy=-total_k[1], dpz=-total_k[2])
