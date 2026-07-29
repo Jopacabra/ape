@@ -86,17 +86,12 @@ if not os.path.exists(config_file_dest):
 next_event_ii = 0
 if config.mode.KEEP_EVENT:
     if event_type == "Duke_avg" or event_type == "Duke":
-        # Find which event to save as
+        # Make the storage directory, if not present
         Path(f"stored_events/{event_type}").mkdir(parents=True, exist_ok=True)
-
-
-        # Find the next event number
         dir_path = Path(f"stored_events/{event_type}")
 
         # Get all subdirectories matching the pattern event_xx
         used_numbers = set()
-
-        # Iterate and collect used numbers
         for subdir in dir_path.iterdir():
             if subdir.is_dir() and subdir.name.startswith("event_"):
                 try:
@@ -183,8 +178,8 @@ elif event_type == "brick":
 # Create a slab of flowing plasma with flow pointing in the positive x direction
 elif event_type == "slab":
     logging.info("Generating x-direction slab...")
-    T = 0.4
-    u = 0.7
+    T = 0.350
+    u = 0.25
     rmax = 7.5
 
     def temp_func(t, x, y, etas):
@@ -340,8 +335,8 @@ def _worker_init(child_seeds, worker_counter, worker_counter_lock, log_queue, me
         # Load radiation neural network -- O(0.01s)
         logging.debug("Loading radiation neural network...")
         _nn = RadiationEmulatorInference(
-            model_file=os.path.join(flow_rad_nn_dir, "data/radiation_emulator_wuvdecay.pt"),
-            normalization_file=os.path.join(flow_rad_nn_dir, "data/radiation_normalization_wuvdecay.json"),
+            model_file=os.path.join(flow_rad_nn_dir, "data/radiation_emulator.pt"),
+            normalization_file=os.path.join(flow_rad_nn_dir, "data/radiation_normalization.json"),
             device='cpu',
             compile=False,
             quiet=True,
@@ -417,14 +412,13 @@ try:
         ###################
         # Hard Event Loop #
         ###################
-        hard_event_records = np.array([])
         for i in range(num_hard_events):
             random_label = int(utilities.rng.uniform(1000000000, 9999999999, 1)[0])
-            logging.info("=" * 70)
+            logging.info("=" * 120)
             logging.info(
                 f"Starting new hard scattering event {i + 1} of {num_hard_events} with label {random_label}."
             )
-            logging.info("=" * 70)
+            logging.info("=" * 120)
 
             ##################
             # Jet Production #
@@ -458,7 +452,7 @@ try:
                 logging.info('String hadronizing vacuum result...')
                 vacuum_event_hadrons, pp_string_success = pythia.ape_to_pythia(hard_event)
                 if not pp_string_success:
-                    logging.info("pp event hadronization failure -- Aborting this event")
+                    logging.error("pp event hadronization failure -- Aborting this event")
                     continue
             elif config.mode.WRITE_HEPMC:
                 vacuum_event_hadrons = pythia.ape_to_pythia(hard_event, hadronize=False)
@@ -520,7 +514,7 @@ try:
 
                 logging.info(f'Evolution round {round_no} complete.')
                 if passed_particles == len(hard_event.particles):
-                    logging.info('All particles evolved.')
+                    logging.info('Particle evolution complete.')
                     break
                 round_no += 1
 
@@ -535,7 +529,7 @@ try:
                 logging.info('String hadronizing in-medium result...')
                 AA_pythia_event, AA_string_success = pythia.ape_to_pythia(hard_event, quiet=True)
                 if not AA_string_success:
-                    logging.info("AA event hadronization failure -- Aborting this event")
+                    logging.error("AA event hadronization failure -- Aborting this event")
                     continue
             elif config.mode.WRITE_HEPMC:
                 AA_pythia_event = pythia.ape_to_pythia(hard_event, hadronize=False)
@@ -561,6 +555,7 @@ try:
             Send the output of the Pythia events to a HepMC3 file.
             """
             if config.mode.WRITE_HEPMC:
+                logging.info("Saving HepMC3 files...")
                 logging.debug("Saving Medium HepMC3 file...")
                 hepmc_event = pythia.pythia_to_hepmc(AA_pythia_event, vt=tau_0 * np.cosh(etas_0), vx=x_0, vy=y_0, vz=tau_0 * np.sinh(etas_0), weight=event_weight)
                 hepmc_filename = f"results/hepmc/m/{random_label}.dat"
@@ -583,6 +578,7 @@ try:
             ####################################
             # Initialize dataset manager for saving particle data
             if config.mode.WRITE_DATAFRAME:
+                logging.info("Saving parquet files...")
                 logging.debug("Writing dataframe to hierarchical dataset...")
                 dataset_manager = event_dataset.HierarchicalEventDataset(os.path.join(results_path, "particle_dataset"))
                 job_id = int(os.environ.get("CONDOR_CLUSTER_ID", "0"))  # Extract from HTC job ID
