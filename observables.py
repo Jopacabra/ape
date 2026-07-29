@@ -237,7 +237,7 @@ def hepmc_to_fastjet_gamma_jet_pairs(hepmc_event: pyhepmc.GenEvent, R: float=0.4
                 # Protect denominator first
                 denominator = np.where(e > pz, e - pz, np.finfo(float).tiny)
                 eta = 0.5 * np.log((e + pz) / denominator)
-            if eta < rap_min or eta > rap_max:
+            if np.abs(eta) < rap_min or np.abs(eta) > rap_max:
                 continue
             # phi = math.atan2(py, px)
 
