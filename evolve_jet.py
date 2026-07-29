@@ -40,7 +40,7 @@ visualize_3Detas = False
 
 # Event options
 num_hard_events = config.mode.NUM_HARD
-event_type = config.mode.EVENT_TYPE
+event_type = config.mode.EVENT
 seed = config.mode.SEED
 
 #############################

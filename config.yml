@@ -5,7 +5,7 @@ mode:  # Operation mode flags
       KEEP_EVENT: False  # Keep plasma data for future analysis
       WRITE_DATAFRAME: True  # Whether to write a dataframe with initial and final parton properties
       WRITE_HEPMC: True  # Whether to write HepMC files
-      EVENT_TYPE:  stored_events/Duke_avg/event_01/viscous_14_moments_evo.dat  # Event type string or path to hydro file
+      EVENT:  stored_events/Duke_avg/event_01/viscous_14_moments_evo.dat  # Event type string or path to hydro file
       MAX_WORKERS:  0  # Max number of workers to use for particle evolution. Set to 0 for automatic choice (e.g. HPC w/ slurm).
 soft_transport:  # Parameters for the hybrid transport medium model - freestreaming, hydro, frzout, & UrQMD
     all:  # Global settings that control all or multiple transport models and / or their interfaces

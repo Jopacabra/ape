@@ -44,7 +44,7 @@ class mode:
     VARY_POINT = bool(cfg['mode']['VARY_POINT'])
     KEEP_EVENT = bool(cfg['mode']['KEEP_EVENT'])
     WRITE_DATAFRAME = bool(cfg['mode']['WRITE_DATAFRAME'])
-    EVENT_TYPE = str(cfg['mode']['EVENT_TYPE'])
+    EVENT = str(cfg['mode']['EVENT'])
     NUM_HARD = int(cfg['mode']['NUM_HARD'])
     MAX_WORKERS = int(cfg['mode']['MAX_WORKERS'])
     WRITE_HEPMC = bool(cfg['mode']['WRITE_HEPMC'])
