@@ -13,6 +13,7 @@ import utilities
 import time
 import math
 
+from radiation_sampling import k_z_values
 
 """
 This module takes a single hard_particles.Particle object and evolves it throughout the plasma phase of a 
@@ -111,7 +112,7 @@ def evolve_particle(particle : hard_particles.Particle, plasma_object : plasma.p
                         num_k_points = 20  # number of log-spaced points in kz to compute
                         x_values = np.logspace(x_min_pow, x_max_pow, num_k_points // 2)
                         k_pos_values = x_values * particle.E0
-                        k_values = k_pos_values  # no need for negative kz now!
+                        k_z_values = k_pos_values  # no need for negative kz now!
 
                         # Create bins in k_perp
                         # Note: maximum of ((Min[x^2, x(1-x)] * 4 * E_0^2) - mu^2) --> E_0^2 - mu^2
@@ -130,7 +131,7 @@ def evolve_particle(particle : hard_particles.Particle, plasma_object : plasma.p
                         dtau_rad_dist = pi.aniso_rad_dist(particle=particle, medium=plasma_object, dtau=dtau,
                                                                           kx_values=k_perp_values,
                                                                           ky_values=k_perp_values,
-                                                                          kz_values=k_values, nn=nn)
+                                                                          kz_values=k_z_values, nn=nn)
 
                         # Compute integral of complete radiation distribution
                         # (np.trapezoid handles integration of arbitrary spacing via coordinates)
@@ -141,12 +142,12 @@ def evolve_particle(particle : hard_particles.Particle, plasma_object : plasma.p
                         else:
                             total_number = np.trapezoid(
                                 np.trapezoid(
-                                    np.trapezoid(dtau_rad_dist, k_values, axis=2),  # Integrate over kz -> shape: (n_kx, n_ky)
+                                    np.trapezoid(dtau_rad_dist, k_z_values, axis=2),  # Integrate over kz -> shape: (n_kx, n_ky)
                                                           k_perp_values, axis=1),  # Integrate over ky -> shape: (n_kx)
                                                           k_perp_values, axis=0)  # Integrate over kx -> scalar
                             total_energy += np.trapezoid(
                                 np.trapezoid(
-                                    np.trapezoid(dtau_rad_dist * x_grid * particle.E0, k_values, axis=2),  # Integrate over kz -> shape: (n_kx, n_ky)
+                                    np.trapezoid(dtau_rad_dist * x_grid * particle.E0, k_z_values, axis=2),  # Integrate over kz -> shape: (n_kx, n_ky)
                                                           k_perp_values, axis=1),  # Integrate over ky -> shape: (n_kx)
                                                           k_perp_values, axis=0)  # Integrate over kx -> scalar
                             logging.debug(f"Radiation number distribution integral: {total_number}")
@@ -160,7 +161,7 @@ def evolve_particle(particle : hard_particles.Particle, plasma_object : plasma.p
                             # Sample the distribution for emission kinematics in the radiation frame
                             k = plasma_interaction.sample_rad_dist(dtau_rad_dist, N_samples=1,
                                                                    kx_values=k_perp_values, ky_values=k_perp_values,
-                                                                   kz_values=k_values, mu=mu, E=particle.E0)
+                                                                   kz_values=k_z_values, mu=mu, E=particle.E0)
                             if k is None:
                                 logging.warning("Gluon kinematics rejected. Skipping emissions.")
                                 n = 0
