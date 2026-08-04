@@ -16,18 +16,20 @@ import observables
 plot_data = True
 
 # results subdirectory for HepMC files
-name = "hepmc"
+hepmc_dir = f"../results_saved/0_10_avg_AuAu_post_finkin_fix/hepmc/"
+# hepmc_dir = f"../results/hepmc/"
+label = "APE 0-10%"
 
 # Statistics settings
 n_bootstrap_samples = 1000
 
 # Particle cuts
 pids = [211]
-pTmin_RAA = 3.0  # Anything below here is liable to be junk both theoretically and computationally.
+pTmin_RAA = 1.0  # Anything below here is liable to be junk both theoretically and computationally.
 pTmax_RAA = 12.0
 rapmin_RAA = 0.0
 rapmax_RAA = 1000
-num_pt_bins = 3
+num_pt_bins = 4
 pT_bins = np.linspace(pTmin_RAA, pTmax_RAA, num_pt_bins+1)
 
 # Storage for results (much smaller than raw data)
@@ -96,8 +98,8 @@ def combine_uncertainties_asymmetric(stat_up, stat_dn, sys_up, sys_dn):
 ####################
 
 for case in ["v", "m"]:
-    hepmc_dir = f"../results/{name}/{case}/"
-    hepmc_files = os.listdir(hepmc_dir)
+    hepmc_dir_case = hepmc_dir + case + "/"
+    hepmc_files = os.listdir(hepmc_dir_case)
 
     weighted_counts_batch = []
     event_count = 0
@@ -110,7 +112,7 @@ for case in ["v", "m"]:
         print(f"Limiting to {max_files} files!")
     for file in hepmc_files[0:np.amin([max_files, num_files])]:
         try:
-            with pyhepmc.open(hepmc_dir + file) as f:
+            with pyhepmc.open(hepmc_dir_case + file) as f:
                 event = f.read()
 
             try:
@@ -272,7 +274,14 @@ if plot_data:
 
 
 # Plot APE result on top
-axis.errorbar(pT_bin_cents, RAA_avg, yerr=RAA_err, marker='o', linestyle='-', color='r', label="APE 0-10%")
+# axis.errorbar(pT_bin_cents, RAA_avg, yerr=RAA_err, marker='o', linestyle='-', color='r', label="APE 0-10%")
+x = np.repeat(pT_bins, 2)[1:-1]        # shape (2N,)
+y_mean  = np.repeat(RAA_avg, 2)
+y_upper = np.repeat(RAA_avg + RAA_err, 2)
+y_lower = np.repeat(RAA_avg - RAA_err, 2)
+axis.fill_between(x, y_lower, y_upper, color='red', alpha=0.3,
+                linewidth=0)
+axis.plot(x, y_mean, color='red', lw=1.8, label=label)
 axis.set_xlabel(r"$p_T$ (GeV/$c$)", fontsize=14)
 axis.set_ylabel(r"$R_{AA}$", fontsize=14)
 axis.set_ylim(0.0, 1.5)

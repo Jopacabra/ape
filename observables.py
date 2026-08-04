@@ -631,7 +631,7 @@ def fastjet_intrajetvnish_total_gammaref(jet: fastjet.PseudoJet=None, gamma: fas
         return avg_vn
 
 # Signed acoplanarity in phi or eta
-def signed_deflection(jet: fastjet.PseudoJet=None, gamma: fastjet.PseudoJet=None, n=1, pT_min=0, dir="phi", phi0=0):
+def signed_acoplanarity(jet: fastjet.PseudoJet=None, gamma: fastjet.PseudoJet=None, dir="phi"):
     """
     Function to compute signed acoplanarity in transverse or longitudinal direction
     """
@@ -658,9 +658,64 @@ def signed_deflection(jet: fastjet.PseudoJet=None, gamma: fastjet.PseudoJet=None
 
         return sign * (np.mod(jet.phi(), np.pi/2) - np.mod(gamma.phi(), np.pi/2))
     elif dir == "eta":
+        # Get pseudorapidities
         jet_eta = jet.eta()
         gamma_eta = gamma.eta()
+
+        if np.isnan(gamma_eta):
+            return np.nan
+        elif np.isnan(jet_eta):
+            return np.nan
+        elif gamma_eta == 0:
+            return np.nan
+
+        return np.sign(gamma_eta) * (jet_eta - gamma_eta)
+    else:
         return None
+
+
+# Signed deflection in phi or eta
+def signed_deflection(jet1: fastjet.PseudoJet=None, jet2: fastjet.PseudoJet=None, dir="phi"):
+    """
+    Function to compute signed deflection in transverse or longitudinal direction
+
+    If jet2 is more towards the attractor, make positive. If jet2 is farther from the attractor, make negative.
+    """
+    # First, compute the appropriate angles
+    if dir == "phi":
+        # Get phis
+        jet1_phi = np.mod(jet1.phi(), 2 * np.pi)  # Modulus to get on [0. 2pi)
+        # jet2_phi = np.mod(jet2.phi(), 2 * np.pi)
+
+        # Determine quadrant of jet1, thereby the sign
+        if jet1_phi >= 0 and jet1_phi < np.pi/2:
+            # Quadrant 1
+            sign = +1
+        elif jet1_phi >= np.pi/2 and jet1_phi < np.pi:
+            # Quadrant 2
+            sign = -1
+        elif jet1_phi >= np.pi and jet1_phi < 3*np.pi/2:
+            # Quadrant 3
+            sign = +1
+        elif jet1_phi >= 3*np.pi/2 and jet1_phi < 2*np.pi:
+            # Quadrant 4
+            sign = -1
+
+        return sign * (np.mod(jet1.phi(), np.pi / 2) - np.mod(jet2.phi(), np.pi / 2))
+    elif dir == "eta":
+        # Get pseudorapidities
+        jet1_eta = jet1.eta()
+        jet2_eta = jet2.eta()
+
+        if np.isnan(jet1_eta):
+            return np.nan
+        elif np.isnan(jet2_eta):
+            return np.nan
+        elif jet1_eta == 0:
+            return np.nan
+
+        return np.sign(jet1_eta) * (jet2_eta - jet1_eta)
+
     else:
         return None
 
@@ -778,3 +833,53 @@ def hepmc_N_PID(hepmc_event: pyhepmc.GenEvent,
         results[int(pid)] = (counts, bin_centers, pT_bins)
 
     return results
+
+
+def compute_event_vn(hepmc_event, n, rap_min, rap_max, pTmin, pTmax, pT_bins, include):
+    """
+    Compute the per-pT-bin Q-vector components for harmonic n from a single
+    HepMC event and the Pythia event weight.
+
+    Returns
+    -------
+    Qx : ndarray, shape (n_bins,)   sum of cos(n*phi) for particles in each bin
+    Qy : ndarray, shape (n_bins,)   sum of sin(n*phi) for particles in each bin
+    M  : ndarray, shape (n_bins,)   particle multiplicity in each bin
+    weight : float                  Pythia event weight
+    """
+    n_bins = len(pT_bins) - 1
+    Qx = np.zeros(n_bins, dtype=np.float64)
+    Qy = np.zeros(n_bins, dtype=np.float64)
+    M  = np.zeros(n_bins, dtype=np.float64)
+
+    weight = hepmc_event.weight("pythia")
+
+    for particle in hepmc_event.particles:
+        if particle.status != 1:          # final-state only
+            continue
+        pid = particle.pid
+        if include and pid not in include:
+            continue
+
+        mom = particle.momentum
+        pT  = np.sqrt(mom.px**2 + mom.py**2)
+        if pT < pTmin or pT >= pTmax:
+            continue
+
+        # rapidity
+        try:
+            rap = 0.5 * np.log((mom.e + mom.pz) / (mom.e - mom.pz))
+        except (ZeroDivisionError, ValueError):
+            continue
+        if abs(rap) < rap_min or abs(rap) > rap_max:
+            continue
+
+        phi  = np.arctan2(mom.py, mom.px)
+        ibin = np.searchsorted(pT_bins[1:], pT)   # bin index
+        ibin = min(ibin, n_bins - 1)
+
+        Qx[ibin] += np.cos(n * phi)
+        Qy[ibin] += np.sin(n * phi)
+        M[ibin]  += 1.0
+
+    return Qx, Qy, M, weight

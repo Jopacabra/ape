@@ -112,8 +112,8 @@ def bootstrap_ratio_or_diff(
 # --- Configuration ---
 
 # Results subdirectory for HepMC files
-hepmc_dir = "../results_saved/0_10_avg_AuAu_post_finkin_fix/hepmc/"
-label = "0-10%"
+hepmc_dir = "../results_saved/30_40_avg_AuAu_post_finkin_fix/hepmc/"
+label = "30-40%"
 
 # Statistics settings
 n_bootstrap_samples = 10000
@@ -132,7 +132,7 @@ rap_max_jet_axis = 1.5
 phi_fence_jet_axis = 0.4
 fence_y = True
 
-# Acoplanarity binning
+# Acoplanarity (delta-j) binning
 aco_min = -0.5
 aco_max = +0.5
 num_aco_bins = 30
@@ -142,15 +142,16 @@ delta_phi = aco_bins[1] - aco_bins[0]
 # jet_x binning:
 #   False  -> bin by aco, plot weighted sum of events per bin (original behaviour)
 #   True   -> bin by jet_x, plot weighted mean aco per bin with bootstrapped errors
-bin_in_jet_x = True
+bin_in_jet_x = False
 jet_x_min = 0.0
 jet_x_max = 1.0
 num_jet_x_bins = 10
 jet_x_bins = np.linspace(jet_x_min, jet_x_max, num_jet_x_bins)
 
 # Observables settings
-deflection_dir = "phi"  # "eta" or "phi"
-plot_group = "diff"     # "ratio", "diff", "both", "m", or "v"
+deflection_dir = "phi"  # Direction for signed deflection computation
+pt_weighting = 0        # Weight each particle's phase by p_T^(pt_weighting)
+plot_group = "both"    # "ratio", "diff", "both", "m", or "v"
 
 # Plot x-axis range (used only when bin_in_jet_x = False)
 xmin = -0.5
@@ -162,8 +163,8 @@ colors = ["r", "g", "b", "m"]
 
 # --- Storage arrays ---
 
-v_jet_pts, v_jet_ys, v_jet_phis = [], [], []
-m_jet_pts, m_jet_ys, m_jet_phis = [], [], []
+v_jet_pts, v_jet_ys, v_jet_phis, v_jet_xs = [], [], [], []
+m_jet_pts, m_jet_ys, m_jet_phis, m_jet_xs = [], [], [], []
 
 # Per-case raw data stored for possible bootstrap use later
 case_data = {}
@@ -181,6 +182,7 @@ for case in ["v", "m"]:
     # Per-case counters
     n_failed        = 0
     n_no_pair       = 0
+    n_subjets       = 0
     n_too_small_pt  = 0
     n_too_large_pt  = 0
     n_too_small_rap = 0
@@ -189,11 +191,12 @@ for case in ["v", "m"]:
     n_too_large_phi = 0
 
     # Per-case accepted jet lists
-    analyzed_jets      = []
-    analyzed_jet_pts   = []
-    analyzed_gammas    = []
-    analyzed_gamma_pts = []
-    analyzed_weights   = []
+    analyzed_WTA_jets    = []
+    analyzed_ES_jets     = []
+    analyzed_WTA_jet_pts = []
+    analyzed_ES_jet_pts  = []
+    analyzed_x           = []
+    analyzed_weights     = []
 
     for file in hepmc_files:
         try:
@@ -203,7 +206,7 @@ for case in ["v", "m"]:
 
             # --- Jet finding ---
             try:
-                gamma, jet = observables.hepmc_to_fastjet_gamma_jet_pairs(
+                gamma, WTA_jet = observables.hepmc_to_fastjet_gamma_jet_pairs(
                     hepmc_event=event,
                     R=R,
                     rap_min=rap_min_jet_finder,
@@ -211,16 +214,29 @@ for case in ["v", "m"]:
                     pTmin=pTmin_jet_finder,
                     scheme=fastjet.WTA_pt_scheme,
                 )
+
+                # Recluster with E-scheme to get axis
+                escheme_def = fastjet.JetDefinition(fastjet.antikt_algorithm, R, fastjet.E_scheme)
+                try:
+                    new_jets = escheme_def(WTA_jet.constituents())
+                    if len(new_jets) > 1:
+                        n_subjets += 1
+                        continue
+                    ES_jet = new_jets[0]
+                except AttributeError:
+                    # WTA_jet has no constituents — it is a single-particle jet
+                    ES_jet = WTA_jet
+
             except Exception:
                 n_failed += 1
                 continue
 
-            if jet is None:
+            if WTA_jet is None:
                 n_no_pair += 1
                 continue
 
             # --- Jet cuts ---
-            jet_pt = jet.pt()
+            jet_pt = WTA_jet.pt()
             if jet_pt < jet_minpt:
                 n_too_small_pt += 1
                 continue
@@ -228,7 +244,7 @@ for case in ["v", "m"]:
                 n_too_large_pt += 1
                 continue
 
-            jet_p   = np.array([jet.px(), jet.py(), jet.pz()])
+            jet_p   = np.array([WTA_jet.px(), WTA_jet.py(), WTA_jet.pz()])
             jet_phi = np.arctan2(jet_p[1], jet_p[0])
             if np.mod(jet_phi, np.pi / 2) < phi_fence_jet_axis / 2:
                 n_too_small_phi += 1
@@ -237,8 +253,7 @@ for case in ["v", "m"]:
                 n_too_large_phi += 1
                 continue
 
-            jet_e   = jet.e()
-            jet_rap = 0.5 * np.log((jet_e + jet_p[2]) / (jet_e - jet_p[2]))
+            jet_rap = WTA_jet.eta()
             if abs(jet_rap) < rap_min_jet_axis:
                 n_too_small_rap += 1
                 continue
@@ -247,22 +262,26 @@ for case in ["v", "m"]:
                 continue
 
             # --- Accepted jet ---
+            jet_x  = WTA_jet.pt() / gamma.pt()
             weight = event.weight("pythia")
 
-            analyzed_jets.append(jet)
-            analyzed_gammas.append(gamma)
-            analyzed_gamma_pts.append(gamma.pt())
-            analyzed_jet_pts.append(jet_pt)
+            analyzed_WTA_jets.append(WTA_jet)
+            analyzed_ES_jets.append(ES_jet)
+            analyzed_WTA_jet_pts.append(jet_pt)
+            analyzed_ES_jet_pts.append(ES_jet.pt())
+            analyzed_x.append(jet_x)
             analyzed_weights.append(weight)
 
             if case == "v":
                 v_jet_pts.append(jet_pt)
                 v_jet_phis.append(jet_phi)
                 v_jet_ys.append(jet_rap)
+                v_jet_xs.append(jet_x)
             else:
                 m_jet_pts.append(jet_pt)
                 m_jet_phis.append(jet_phi)
                 m_jet_ys.append(jet_rap)
+                m_jet_xs.append(jet_x)
 
         except IsADirectoryError:
             continue
@@ -272,30 +291,31 @@ for case in ["v", "m"]:
     print(f"  Files:                      {len(hepmc_files)}")
     print(f"  Failed events:              {n_failed}")
     print(f"  No gamma-jet pair:          {n_no_pair}")
+    print(f"  Split reclustered jets:     {n_subjets}")
     print(f"  Too small pT:               {n_too_small_pt}")
     print(f"  Too large pT:               {n_too_large_pt}")
     print(f"  Too small rapidity:         {n_too_small_rap}")
     print(f"  Too large rapidity:         {n_too_large_rap}")
     print(f"  Too small phi (fence):      {n_too_small_phi}")
     print(f"  Too large phi (fence):      {n_too_large_phi}")
-    print(f"  Accepted jets:              {len(analyzed_jets)}")
+    print(f"  Accepted jets:              {len(analyzed_WTA_jets)}")
 
-    n_constituents = [len(list(j.constituents())) for j in analyzed_jets]
+    n_constituents = [len(list(j.constituents())) for j in analyzed_WTA_jets]
     print(f"  Mean constituents:          {np.mean(n_constituents):.2f}")
     print(f"  Fraction with N<=2:         {np.mean(np.array(n_constituents) <= 2):.2f}")
 
-    # --- Compute signed acoplanarity for each accepted jet ---
+    # --- Compute signed deflection for each accepted jet ---
     acos = np.array([
-        observables.signed_acoplanarity(jet=jet, gamma=gamma, dir=deflection_dir)
-        for gamma, jet in zip(analyzed_gammas, analyzed_jets)
+        observables.signed_deflection(jet1=WTA_jet, jet2=ES_jet, dir=deflection_dir)
+        for ES_jet, WTA_jet in zip(analyzed_ES_jets, analyzed_WTA_jets)
     ], dtype=np.float32)
 
     print(f"  aco mean: {np.nanmean(acos):.4f}  max: {np.nanmax(acos):.4f}  min: {np.nanmin(acos):.4f}")
 
-    analyzed_weights   = np.array(analyzed_weights)
-    analyzed_gamma_pts = np.array(analyzed_gamma_pts)
-    analyzed_jet_pts   = np.array(analyzed_jet_pts)
-    analyzed_x         = analyzed_jet_pts / analyzed_gamma_pts
+    analyzed_weights     = np.array(analyzed_weights)
+    analyzed_WTA_jet_pts = np.array(analyzed_WTA_jet_pts)
+    analyzed_ES_jet_pts  = np.array(analyzed_ES_jet_pts)
+    analyzed_x           = np.array(analyzed_x)
 
     # Store raw per-event data for bootstrap use when plot_group is "ratio" or "diff"
     case_data[case] = {
@@ -360,10 +380,10 @@ v_bin_errs_aco = np.array(v_bin_errs_aco)
 
 active_bins = jet_x_bins if bin_in_jet_x else aco_bins
 bin_centers = (active_bins[1:] + active_bins[:-1]) / 2
-x_label     = r'jet $x_j$'               if bin_in_jet_x else r'Acoplanarity (rad)'
-y_label_n   = r'Mean Acoplanarity (rad)'  if bin_in_jet_x else r'(1/N)dN/d$\Delta \phi$'
-plot_xmin   = jet_x_min                   if bin_in_jet_x else xmin
-plot_xmax   = jet_x_max                   if bin_in_jet_x else xmax
+x_label     = r'jet $x_j$'            if bin_in_jet_x else r'$\Delta j$ (rad)'
+y_label_n   = r'Mean $\Delta j$ (rad)' if bin_in_jet_x else r'(1/N)dN/d$\Delta j$'
+plot_xmin   = jet_x_min                if bin_in_jet_x else xmin
+plot_xmax   = jet_x_max                if bin_in_jet_x else xmax
 
 # --- Main plot ---
 fig, axis = plt.subplots(figsize=(12 / 2, 7 / 2))
@@ -388,38 +408,38 @@ if plot_group in ("ratio", "diff"):
 
     if plot_group == "ratio":
         axis.plot(bin_centers, derived_vals, marker='o', markersize=7, linestyle='-',
-                  color=colors[flow_i], linewidth=2, label=deflection_dir + r' $\Delta aco$', zorder=3)
+                  color=colors[flow_i], linewidth=2, label=deflection_dir + r' $\Delta j$', zorder=3)
         axis.fill_between(bin_centers, derived_vals - derived_errs, derived_vals + derived_errs,
                           color=colors[3], alpha=0.25, zorder=2)
-        axis.set_ylabel(r'$R_{\phi_{\psi_2}}$', fontsize=10)
+        axis.set_ylabel(r'$R_{\Delta j}$', fontsize=10)
     else:
         axis.plot(bin_centers, derived_vals, marker='o', markersize=7, linestyle='-',
-                  color=colors[flow_i], linewidth=2, label=deflection_dir + r' $\Delta aco$', zorder=3)
+                  color=colors[flow_i], linewidth=2, label=deflection_dir + r' $\Delta \Delta j$', zorder=3)
         axis.fill_between(bin_centers, derived_vals - derived_errs, derived_vals + derived_errs,
                           color=colors[flow_i], alpha=0.25, zorder=2)
-        axis.set_ylabel('Change in Average Signed Acoplanarity (rad)', fontsize=10)
+        axis.set_ylabel(r'Change in Average Signed $\Delta j$ (rad)', fontsize=10)
 
 elif plot_group == "m":
     axis.plot(bin_centers, bin_vals_aco, marker='o', markersize=7, linestyle='-',
-              color=colors[flow_i], linewidth=2, label=deflection_dir + r' AA $aco$', zorder=3)
+              color=colors[flow_i], linewidth=2, label=deflection_dir + r' AA', zorder=3)
     axis.fill_between(bin_centers, bin_vals_aco - bin_errs_aco, bin_vals_aco + bin_errs_aco,
                       color=colors[flow_i], alpha=0.25, zorder=2)
     axis.set_ylabel(y_label_n, fontsize=10)
 
 elif plot_group == "v":
     axis.plot(bin_centers, v_bin_vals_aco, marker='o', markersize=7, linestyle='-',
-              color=colors[1], linewidth=2, label=deflection_dir + r' pp $aco$', zorder=3)
+              color=colors[1], linewidth=2, label=deflection_dir + r' pp', zorder=3)
     axis.fill_between(bin_centers, v_bin_vals_aco - v_bin_errs_aco, v_bin_vals_aco + v_bin_errs_aco,
                       color=colors[1], alpha=0.25, zorder=2)
     axis.set_ylabel(y_label_n, fontsize=10)
 
 elif plot_group == "both":
     axis.plot(bin_centers, bin_vals_aco, marker='o', markersize=7, linestyle='-',
-              color=colors[0], linewidth=2, label=deflection_dir + r' AA $aco$', zorder=3)
+              color=colors[0], linewidth=2, label=deflection_dir + r' AA', zorder=3)
     axis.fill_between(bin_centers, bin_vals_aco - bin_errs_aco, bin_vals_aco + bin_errs_aco,
                       color=colors[0], alpha=0.25, zorder=2)
     axis.plot(bin_centers, v_bin_vals_aco, marker='o', markersize=7, linestyle=':',
-              color=colors[1], linewidth=2, label=deflection_dir + r' pp $aco$', zorder=3)
+              color=colors[1], linewidth=2, label=deflection_dir + r' pp', zorder=3)
     axis.fill_between(bin_centers, v_bin_vals_aco - v_bin_errs_aco, v_bin_vals_aco + v_bin_errs_aco,
                       color=colors[1], alpha=0.25, zorder=2)
     axis.set_ylabel(y_label_n, fontsize=10)
@@ -437,17 +457,19 @@ axis.set_title(
 )
 
 bin_suffix = "xj" if bin_in_jet_x else deflection_dir
-fig.savefig(f"acoplanarity_{bin_suffix}.png", dpi=150, bbox_inches='tight')
+fig.savefig(f"delta_j_{bin_suffix}.png", dpi=150, bbox_inches='tight')
 
 # --- Diagnostic histograms ---
 for v_data, m_data, xlabel, fname in [
-    (v_jet_ys,   m_jet_ys,   r"$y$",       "rap_hist.png"),
-    (v_jet_phis, m_jet_phis, r"$\phi$",    "phi_hist.png"),
-    (v_jet_pts,  m_jet_pts,  r"jet $p_T$", "pT_hist.png"),
+    (v_jet_ys,   m_jet_ys,   r"$y$",       "hist_rap.png"),
+    (v_jet_phis, m_jet_phis, r"$\phi$",    "hist_phi.png"),
+    (v_jet_pts,  m_jet_pts,  r"jet $p_T$", "hist_pT.png"),
+    (v_jet_xs,   m_jet_xs,   r"jet $x_j$", "hist_xj.png"),
 ]:
+    bins = np.arange(0, 1, 0.05) if "x_j" in xlabel else 100
     fig_h, ax_h = plt.subplots(figsize=(8, 6))
-    ax_h.hist(v_data, bins=100, color="g", alpha=0.5, label="pp")
-    ax_h.hist(m_data, bins=100, color="r", alpha=0.5, label="AA")
+    ax_h.hist(v_data, bins=bins, color="g", alpha=0.5, label="pp")
+    ax_h.hist(m_data, bins=bins, color="r", alpha=0.5, label="AA")
     ax_h.set_xlabel(xlabel)
     ax_h.legend()
     fig_h.savefig(fname, dpi=150, bbox_inches="tight", pad_inches=0.05)

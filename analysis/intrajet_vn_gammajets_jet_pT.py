@@ -32,7 +32,8 @@ def suppress_fd_output():
             os.close(fd)
 
 # results subdirectory for HepMC files
-name = "hepmc"#"hepmc_1_120_GeV"
+hepmc_dir = "../results_saved/0_10_avg_AuAu_post_finkin_fix/hepmc/"
+label = "0-10%"
 
 # Statistics settings
 n_bootstrap_samples = 10000
@@ -41,15 +42,15 @@ n_bootstrap_samples = 10000
 R = 1.0
 pTmin_jet_finder = 2.0  # Minimum pT of constituents to consider
 rap_min_jet_finder = 0.0  # Minimum rapidity of constituents to consider
-rap_max_jet_finder = 1.5  # Maximum rapidity of constituents to consider
+rap_max_jet_finder = R / 2   # Maximum rapidity of constituents to consider
 
 # Jet cuts
 jet_minpt = 10.0
 jet_maxpt = 120.0
-rap_min_jet_axis = 0.05
+rap_min_jet_axis = 0.0
 rap_max_jet_axis = 0.5
-phi_fence_jet_axis = 0.0
-fence_y = False
+phi_fence_jet_axis = 0.4
+fence_y = True
 
 # Binning
 cut_by = "x"
@@ -62,7 +63,7 @@ xmax_vn = 1
 num_x_bins = 5
 
 # Observables settings
-flow = "z"
+flow = "x"
 pt_weighting = 0  # Weight each particle's phase by p_T^(pt_weighting) when computing vn of each jet
 refaxis = "jet"
 plot_group = "diff"  # "diff", "both", "m", or "v"
@@ -100,8 +101,8 @@ def weighted_mean(vn, w):
 for case in ["v", "m"]:
 
     # Files
-    hepmc_dir = "../results/" + name + "/" + case + "/"
-    hepmc_files = os.listdir(hepmc_dir)
+    case_dir = hepmc_dir + case + "/"
+    hepmc_files = os.listdir(case_dir)
 
 
     # Binning & lists
@@ -134,7 +135,7 @@ for case in ["v", "m"]:
     for file in hepmc_files:
         try:
             with suppress_fd_output():
-                with pyhepmc.open(hepmc_dir + file) as f:
+                with pyhepmc.open(case_dir + file) as f:
                     event = f.read()
 
 
@@ -522,8 +523,10 @@ else:
     axis.set_xlabel(r'Jet $p_T$ (GeV)', fontsize=10)
 axis.legend(fontsize=10, loc='best')
 axis.grid(True, alpha=0.3)
-axis.set_title(f"R={R}, phi_fence={phi_fence_jet_axis}, Fence_y={fence_y}, particle_rap_min={rap_min_jet_finder}, particle_rap_max={rap_max_jet_finder},\njet_rap_min={rap_min_jet_axis}, jet_rap_max={rap_max_jet_axis}, jetpTmin={jet_minpt}, jetpTmax={jet_maxpt}", fontsize=10)
-fig.savefig(f"intrajet_vn_{refaxis}axis_jet{cut_by}.png", dpi=150, bbox_inches='tight')
+axis.set_title(f"{label} Cent., R={R}, phi_fence={phi_fence_jet_axis}, Fence_y={fence_y}, particle_rap_min={rap_min_jet_finder}, particle_rap_max={rap_max_jet_finder},\njet_rap_min={rap_min_jet_axis}, jet_rap_max={rap_max_jet_axis}, jetpTmin={jet_minpt}, jetpTmax={jet_maxpt}", fontsize=10)
+money_fname = f"intrajet_vn_{refaxis}axis_jet{cut_by}.png"
+fig.savefig(money_fname, dpi=150, bbox_inches='tight')
+print(f"Saved to: {money_fname}")
 
 fig2 = plt.figure(figsize=(8, 6))
 axis2 = fig2.add_subplot()
