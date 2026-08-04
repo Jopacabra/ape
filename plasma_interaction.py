@@ -534,7 +534,7 @@ def aniso_rad_dist(particle: hard_particles.Particle, medium: plasma.plasma,
     dtau_rad_dist = nn.compute_dNd3k_grid(
         E=particle.E0,  # Use E0 to avoid rescaling the meaning of x between steps
         z0=particle.tau / hbarc,  # tau is in fm, need to give to NN in GeV^{-1}
-        zf=(particle.tau + delta_pathlength) / hbarc,  # tau & dtau are in fm, need to give to NN in GeV^{-1}
+        # zf=(particle.tau + delta_pathlength) / hbarc,  # tau & dtau are in fm, need to give to NN in GeV^{-1}
         u_perp=uperp,
         T=temp,
         g=config.constants.G,

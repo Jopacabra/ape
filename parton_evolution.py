@@ -8,7 +8,7 @@ import hard_particles
 import plasma_interaction
 import plasma_interaction as pi
 import config
-from plasma_interaction import NoMedium
+from plasma_interaction import NoMedium, rad_energy_integrand
 import utilities
 import time
 import math
@@ -57,6 +57,9 @@ def evolve_particle(particle : hard_particles.Particle, plasma_object : plasma.p
 
         # Compute remaining number of steps to evolve
         num_steps = int((tau_f - particle.tau)/dtau)
+        if num_steps < 1:
+            logging.warning("Particle already evolved beyond tau_f. No evolution to perform.")
+            return emission_momenta_total, emission_coords_total, False
 
         # Quarks and gluons have medium interaction
         if particle.isq or particle.isg:
@@ -82,7 +85,7 @@ def evolve_particle(particle : hard_particles.Particle, plasma_object : plasma.p
 
                 # Compute simple GLV energy loss
                 try:
-                    t0 = time.time()
+                    rad_t0 = time.time()
                     if config.jet.RAD_MODEL == "aniso_NN":
                         """
                         Use a Neural Network emulator to commute the radiation spectrum for this particle in this step.
@@ -184,9 +187,6 @@ def evolve_particle(particle : hard_particles.Particle, plasma_object : plasma.p
 
                                 # Set longitudinal momentum to expected energy loss. k_perp does not reduce E.
                                 k[2] = expected_E
-                                if not math.isclose(k[2], expected_E, rel_tol=1e-12):
-                                    logging.warning(
-                                        f"Rescaled gluon energy expected {expected_E} GeV, but {np.linalg.norm(k)} GeV")
 
                             # Check if gluon is backward facing -- This shouldn't happen from a single step's radiation,
                             # but summing the distribution over multiple steps "turns" the coordinate system such that
@@ -221,10 +221,6 @@ def evolve_particle(particle : hard_particles.Particle, plasma_object : plasma.p
                         # Create particle delta opposite to the total emitted gluon momentum in the lab coord. system
                         rad_delta = hard_particles.ParticleDelta(dpx=-total_k[0], dpy=-total_k[1], dpz=-total_k[2])
 
-                        # Append momenta and coords to complete evolution list
-                        for i in np.arange(len(emission_momenta)):
-                            emission_momenta_total.append(emission_momenta[i])
-
 
                     elif config.jet.RAD_MODEL == "iso_analytic":
                         rad_delta = pi.rad_delta(particle, plasma_object, dtau)
@@ -245,8 +241,8 @@ def evolve_particle(particle : hard_particles.Particle, plasma_object : plasma.p
                     rad_delta = hard_particles.ParticleDelta(dpx=0, dpy=0, dpz=0)
                     break
 
-                dt = time.time() - t0
-                logging.debug(f"Radiation computed in {dt}s")
+                rad_dt = time.time() - rad_t0
+                logging.debug(f"Radiation computed in {rad_dt}s")
 
                 ###############
                 # Collisional #
