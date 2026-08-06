@@ -504,11 +504,19 @@ try:
                     # Spawn child particles, color rotating our live particle where necessary
                     og_tag = int(modified_particle.mother1)  # Modified particle's vacuum parent
                     color_target_tag = live_tag  # Modified particle itself gets the color modification
-                    if round_no < max_rad_gens:  # Only create new particles for the first round of emissions
+                    if round_no < max_rad_gens:
+                        # For these rounds, create new particles and evolve them in the next round
                         for j in range(0, len(emission_momenta)):
                             hard_event.spawn_radiation(og_tag, color_target_tag, emission_momenta[j], emission_coords[j])
                     else:
-                        pass
+                        # For these particles, create the emissions and sample a thermalized momentum for them.
+                        if config.jet.SPAWN_THERMAL:
+                            for j in range(0, len(emission_momenta)):
+                                hard_event.spawn_radiation(og_tag, color_target_tag, emission_momenta[j],
+                                                           emission_coords[j])
+                                hard_event.particles[-1].thermal_sample()
+                                passed_particles += 1
+                            logging.debug(f"Spawned {len(emission_momenta)} thermalized particles.")
 
                 passed_particles += len(round_particles)
 
