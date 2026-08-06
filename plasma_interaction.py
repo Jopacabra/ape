@@ -946,7 +946,7 @@ def N_gluons_fk(particle: hard_particles.Particle, medium: plasma.plasma, dtau: 
     return CR * np.trapezoid(y=int_vals, x=x_vals)
 
 
-def sample_rad_dist(rad_dist, kx_values, ky_values, kz_values, N_samples=1, kin_cut=True, mu=0.3, E=10):
+def sample_rad_dist(rad_dist, kx_values, ky_values, kz_values, N_samples=1, kin_cut=True, mu=0.3, E=10.0):
     """
     Function to sample radiation distribution for kx, ky, kz.
     Treat dI/(dxdkxdky) as an (unnormalized) 3D probability density and draw N_samples points (kx, ky, kz) from it.
@@ -1011,3 +1011,113 @@ def sample_rad_dist(rad_dist, kx_values, ky_values, kz_values, N_samples=1, kin_
         return np.reshape(emission_momentum, 3)
     else:
         return emission_momentum
+
+
+def aniso_nn(particle: hard_particles.Particle, plasma_object: plasma.plasma, dtau: float, nn):
+    """
+    Use a Neural Network emulator to compute the radiation spectrum for this particle in this macrostep.
+
+    Perform a simplified Ogatta thinning, assuming a constant rate between emissions (within this step).
+
+    Then, sample the kinematics of the emitted particles from the distribution.
+    """
+    # Hard coded options
+    fix_rate = True  # Whether or not to replace the integral of the radiation spectrum with the analytic estimate.
+
+    # Compute radiation kinematic bounds -- see https://arxiv.org/abs/nucl-th/0112071
+    point = particle.coords
+    temp = plasma_object.temp(point).item()
+    mu = mu_DeBye(temp)
+    x_min = mu / (2 * particle.E)
+    x_max = 1 - x_min
+
+    # Create bins of kz
+    x_min_pow = np.log10(x_min)  # minimum power of 10 in x to compute
+    x_max_pow = np.log10(x_max)  # maximum power of 10 in x to compute
+    num_k_points = 20  # number of log-spaced points in kz to compute
+    x_values = np.logspace(x_min_pow, x_max_pow, num_k_points // 2)
+    k_z_pos_values = x_values * particle.E
+    k_z_values = k_z_pos_values  # no need for negative kz now!
+
+    # Create bins in k_perp
+    # Note: maximum of ((Min[x^2, x(1-x)] * 4 * E_0^2) - mu^2) --> E_0^2 - mu^2
+    # Added a factor of 0.25, because everything else is expensive numerically small probabilities
+    # !!!!!!!!!!!!! Revisit this later !!!!!!!!!!!!!
+    num_k_perp_points = 25  # num or (num - 1) of points in kx & ky to compute -- 0 added
+    k_perp_pos_values = np.linspace(0, 0.25 * np.sqrt(particle.E ** 2 - mu ** 2),
+                                    num_k_perp_points // 2)
+    k_perp_values = np.concatenate((-np.flip(k_perp_pos_values[1:]), k_perp_pos_values))
+
+    _, _, x_grid = np.meshgrid(k_perp_values, k_perp_values, x_values, indexing='ij')
+
+    emission_momenta = []
+
+    # Create a subdivision counter to march through this step, sampling the position of the next emission based on the
+    # radiation rate. Exit when we either finish the step or the particle reaches our desired medium scale.
+    tau = particle.tau
+    total_kz = 0
+    particle_p_norm = np.linalg.norm(particle.p3)
+    while tau < tau + dtau and total_kz < particle_p_norm - config.jet.EMIN:
+        # Compute radiation distribution from this macrostep -- returned in (kx, ky, kz) in parton frame
+        dtau_rad_dist = aniso_rad_dist(particle=particle, medium=plasma_object, dtau=dtau,
+                                       kx_values=k_perp_values,
+                                       ky_values=k_perp_values,
+                                       kz_values=k_z_values, nn=nn)
+
+        # Compute integrals of complete radiation distribution
+        # (np.trapezoid handles integration of arbitrary spacing via coordinates)
+        total_number = np.trapezoid(
+            np.trapezoid(
+                np.trapezoid(dtau_rad_dist, k_z_values, axis=2),  # Integrate over kz -> shape: (n_kx, n_ky)
+                k_perp_values, axis=1),  # Integrate over ky -> shape: (n_kx)
+            k_perp_values, axis=0)  # Integrate over kx -> scalar
+
+        # Approximate radiation rate
+        if fix_rate:
+            rate = N_gluons(particle=particle, medium=plasma_object, dtau=dtau) / dtau
+        else:
+            rate = total_number / dtau
+
+        # Ogatta-thinning style sample for next emission position
+        tau_to_emit = rng.exponential(1.0 / rate)
+        next_tau = tau + tau_to_emit
+
+        # If the next emission lies outside this macro timestep, break and stop emitting in this step
+        if next_tau > tau + dtau:
+            break
+
+        # Otherwise, accept the emission & sample the distribution for emission kinematics in the radiation frame
+        k = sample_rad_dist(dtau_rad_dist, N_samples=1,
+                            kx_values=k_perp_values, ky_values=k_perp_values,
+                            kz_values=k_z_values, mu=mu, E=particle.E)
+        if k is None:
+            logging.warning("Gluon kinematics rejected. Skipping emissions.")
+            tau = next_tau
+            continue
+        logging.debug(f"Emitting gluon! Radiation frame info:")
+
+        # If we rescale energies, do it!
+        # Compute expected energy of emitted gluons
+        logging.debug(f"p = {particle.p3} GeV")
+        logging.debug(f"k = {k} GeV")
+
+        # Check if gluon is backward facing -- This shouldn't happen from a single step's radiation,
+        # but summing the distribution over multiple steps "turns" the coordinate system such that
+        # it has a nonzero total probability
+        if k[2] < 0.0:
+            logging.warning(
+                "!\n!\n!\nEmitted gluon is backward facing. Not good!\n!\n!\n!")
+
+        # Transform emission momentum to lab frame
+        k = lf_emission_momentum(k=k, particle=particle, medium=plasma_object)
+        logging.debug(f"k = {k} GeV")
+
+        # Append momenta to list for this step
+        emission_momenta.append(k)
+        total_kz += np.linalg.norm(k)
+
+        # Step forward in time and reiterate
+        tau = next_tau
+
+    # Return all of the emissions for this macrostep
+    return emission_momenta

@@ -13,8 +13,6 @@ import utilities
 import time
 import math
 
-from radiation_sampling import k_z_values
-
 """
 This module takes a single hard_particles.Particle object and evolves it throughout the plasma phase of a 
 plasma.Plasma object.
@@ -88,132 +86,17 @@ def evolve_particle(particle : hard_particles.Particle, plasma_object : plasma.p
                 try:
                     rad_t0 = time.time()
                     if config.jet.RAD_MODEL == "aniso_NN":
-                        """
-                        Use a Neural Network emulator to commute the radiation spectrum for this particle in this step.
-                        
-                        Poisson sample about the integral of the radiation spectrum to determine the number of gluons 
-                        to emit. Then, sample the kinematics of the particles from the distribution. Finally, rescale 
-                        the emissions to the expected energy loss.
-                        """
-                        # Hardcoded options
-                        fixed_norm = True  # Overwrite the normalization of the distribution with analytic estimate.
-                        poisson_E = False  # Poisson sample the energy of each emission
-
-                        # Compute radiation kinematic bounds -- see https://arxiv.org/abs/nucl-th/0112071
-                        point = particle.coords
-                        temp = plasma_object.temp(point).item()
-                        mu = pi.mu_DeBye(temp)
-                        x_min = mu / (2 * particle.E0)
-                        x_max = 1 - x_min
-
-                        # Create bins of kz
-                        x_min_pow = np.log10(x_min)  # minimum power of 10 in x to compute
-                        x_max_pow = np.log10(x_max)  # maximum power of 10 in x to compute
-                        num_k_points = 20  # number of log-spaced points in kz to compute
-                        x_values = np.logspace(x_min_pow, x_max_pow, num_k_points // 2)
-                        k_pos_values = x_values * particle.E0
-                        k_z_values = k_pos_values  # no need for negative kz now!
-
-                        # Create bins in k_perp
-                        # Note: maximum of ((Min[x^2, x(1-x)] * 4 * E_0^2) - mu^2) --> E_0^2 - mu^2
-                        # Added a factor of 0.25, because everything else is expensive numerically small probabilities
-                        # !!!!!!!!!!!!! Revisit this later !!!!!!!!!!!!!
-                        num_k_perp_points = 25  # num or (num - 1) of points in kx & ky to compute -- 0 added
-                        k_perp_pos_values = np.linspace(0, 0.25 * np.sqrt(particle.E0 ** 2 - mu ** 2),
-                                                        num_k_perp_points // 2)
-                        k_perp_values = np.concatenate((-np.flip(k_perp_pos_values[1:]), k_perp_pos_values))
-
-                        _, _, x_grid = np.meshgrid(k_perp_values, k_perp_values, x_values, indexing='ij')
-
-                        emission_momenta = []
-
-                        # Compute radiation distribution from this step -- returned in (kx, ky, kz) in parton frame
-                        dtau_rad_dist = pi.aniso_rad_dist(particle=particle, medium=plasma_object, dtau=dtau,
-                                                                          kx_values=k_perp_values,
-                                                                          ky_values=k_perp_values,
-                                                                          kz_values=k_z_values, nn=nn)
-
-                        # Compute integral of complete radiation distribution
-                        # (np.trapezoid handles integration of arbitrary spacing via coordinates)
-                        if fixed_norm:
-                            # Fix analytic expectation for gluon emissions per step
-                            total_number = pi.N_gluons(particle=particle, medium=plasma_object, dtau=dtau)
-                            total_energy += pi.E_gluons(particle=particle, medium=plasma_object, dtau=dtau)
-                        else:
-                            total_number = np.trapezoid(
-                                np.trapezoid(
-                                    np.trapezoid(dtau_rad_dist, k_z_values, axis=2),  # Integrate over kz -> shape: (n_kx, n_ky)
-                                                          k_perp_values, axis=1),  # Integrate over ky -> shape: (n_kx)
-                                                          k_perp_values, axis=0)  # Integrate over kx -> scalar
-                            total_energy += np.trapezoid(
-                                np.trapezoid(
-                                    np.trapezoid(dtau_rad_dist * x_grid * particle.E0, k_z_values, axis=2),  # Integrate over kz -> shape: (n_kx, n_ky)
-                                                          k_perp_values, axis=1),  # Integrate over ky -> shape: (n_kx)
-                                                          k_perp_values, axis=0)  # Integrate over kx -> scalar
-                            logging.debug(f"Radiation number distribution integral: {total_number}")
-                            logging.debug(f"Radiation energy distribution integral: {total_energy}")
-
-                        # Poisson sample to determine number of gluons to emit, with an average of this step's number
-                        n = rng.poisson(lam=total_number, size=1).item()
-
-                        # Sample and rescale emission kinematics
-                        for i in range(n):
-                            # Sample the distribution for emission kinematics in the radiation frame
-                            k = plasma_interaction.sample_rad_dist(dtau_rad_dist, N_samples=1,
-                                                                   kx_values=k_perp_values, ky_values=k_perp_values,
-                                                                   kz_values=k_z_values, mu=mu, E=particle.E0)
-                            if k is None:
-                                logging.warning("Gluon kinematics rejected. Skipping emissions.")
-                                n = 0
-                                break
-                            logging.debug(f"Emitting gluon! Radiation frame info:")
-
-                            # If we rescale energies, do it!
-                            # Compute expected energy of emitted gluons
-                            logging.debug(f"p = {particle.p3} GeV")
-                            logging.debug(f"k = {k} GeV")
-                            if fixed_norm:
-                                # Use analytic expectation
-                                expected_E = total_energy / n
-
-                                # Poisson sample, if you want -- Doesn't really make sense to do a discrete sample...
-                                if poisson_E:
-                                    expected_E = rng.poisson(lam=expected_E, size=1).item()
-
-                                # Don't allow emission of higher energy than particle's current energy.
-                                if expected_E > particle.E:
-                                    logging.warning(
-                                        f"Expected emission energy {expected_E} GeV is higher than particle's current energy {particle.E} GeV.")
-                                    expected_E = particle.E  # Particle should thermalize on the next step.
-
-                                # Set longitudinal momentum to expected energy loss. k_perp does not reduce E.
-                                k[2] = expected_E
-
-                            # Check if gluon is backward facing -- This shouldn't happen from a single step's radiation,
-                            # but summing the distribution over multiple steps "turns" the coordinate system such that
-                            # it has a nonzero total probability
-                            if k[2] < 0.0:
-                                logging.warning(
-                                    "!\n!\n!\nEmitted gluon is backward facing. Not good!\n!\n!\n!")
-
-
-                            # Transform emission momentum to lab frame
-                            k = pi.lf_emission_momentum(k=k, particle=particle, medium=plasma_object)
-                            logging.debug(f"k = {k} GeV")
-
-                            # Append momenta to list for this step
-                            emission_momenta.append(k)
+                        # Compute emissions from NN method
+                        emission_momenta = pi.aniso_nn(particle=particle, plasma_object=plasma_object, dtau=dtau, nn=nn)
 
                         # Find the total momentum of the emitted particles
+                        n = len(emission_momenta)
                         if n == 0:
                             # No emission, so set radiation momentum to zero
                             total_k = np.array([0, 0, 0])
                         else:
                             # Sum emission momenta from this step
                             total_k = np.sum(emission_momenta, axis=0)
-
-                            # Only reset if this energy was "given a chance" to emit
-                            total_energy = 0
 
                             # Append momenta and coords to complete evolution list
                             for i in np.arange(len(emission_momenta)):
