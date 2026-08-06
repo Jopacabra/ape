@@ -77,18 +77,23 @@ def scattering(pThatmin=config.jet.pythia.PTHATMIN, pThatmax=config.jet.pythia.P
 
             # Get only events where the hard scattering plane is close to mid-rapidity  -- cuts on y_{CM} +/- y_{hard}
             max_y = 0
+            ids = []
             for i in range(process.size()):
                 p = process[i]
                 abs_y = np.abs(p.y())
                 if p.isFinal():
+                    ids.append(p.id())
                     max_y = max(max_y, abs_y)
                     if abs_y > y_max:
                         return True  # veto
                     elif abs_y < y_min:
                         return True  # veto
             # logging.info(f"Hard scattering boost rapidity = {info.y()}")
+            selected_pThat = info.pTHat()
+            final_ids_string = " + ".join(map(str, ids))
+            logging.info(f"{info.id1()} + {info.id2()} to {final_ids_string}")
             logging.info(f"Hard scattering plane rapidity = {max_y}")
-            logging.info(f"Hard scattering pThat = {info.pTHat()}")
+            logging.info(f"Hard scattering pThat = {selected_pThat}")
             return False  # accept
 
     #################
@@ -148,6 +153,8 @@ def scattering(pThatmin=config.jet.pythia.PTHATMIN, pThatmax=config.jet.pythia.P
         pythia_process.readString("PromptPhoton:qg2qgamma = on")
         pythia_process.readString("PromptPhoton:qqbar2ggamma = on")
         pythia_process.readString("PromptPhoton:gg2ggamma = on")
+        # pythia_process.readString("WeakBosonAndParton:qqbar2gmZg = on")
+        # pythia_process.readString("WeakBosonAndParton:qg2gmZq = on")
 
     # There are some other process types we should consider for other purposes.
     # pythia_process.readString("HardQCD:3parton = on")  # 3 parton kinds of processes...
@@ -223,7 +230,6 @@ def scattering(pThatmin=config.jet.pythia.PTHATMIN, pThatmax=config.jet.pythia.P
     ################################
     # Package and output particles #
     ################################
-    logging.info("Event selection success: {}".format(success))
     # pythia_process.event.list()  # List the event that we accepted
     weight = pythia_process.infoPython().weight()
     output_particles = []
@@ -239,7 +245,9 @@ def scattering(pThatmin=config.jet.pythia.PTHATMIN, pThatmax=config.jet.pythia.P
         output_particles.append(ape_particle)
 
     # Make an ape hard_particles.EventRecord object
-    ape_event = hard_particles.EventRecord(particles=output_particles, weight=weight,
+    info = pythia_process.infoPython()
+    metadata = {"pTHat": info.pTHat()}
+    ape_event = hard_particles.EventRecord(particles=output_particles, weight=weight, meta=metadata,
                                            event_tau0=tau, event_x0=x, event_y0=y, event_etas0=etas)
 
     if pythia_event:
