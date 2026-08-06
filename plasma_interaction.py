@@ -517,12 +517,6 @@ def aniso_rad_dist(particle: hard_particles.Particle, medium: plasma.plasma,
     delta_pathlength = np.sqrt(delta_x ** 2 + delta_y ** 2 + delta_z ** 2)
 
     # Warn if we're outside our training domain
-    # if particle.tau + delta_pathlength / hbarc > np.amax(nn.X[5]):
-    #     logging.warning("Particle pathlength is outside of training domain! Good luck!")
-    # if temp > np.amax(nn.X[7]) or temp < np.amin(nn.X[7]):
-    #     logging.warning("Temperature is outside of training domain! Good luck!")
-    # if np.linalg.norm(uperp) > np.amax(nn.X[6]) or np.linalg.norm(uperp) < np.amin(nn.X[6]):
-    #     logging.warning("Perp. velocity is outside of training domain! Good luck!")
     if particle.tau + delta_pathlength / hbarc > 50.0:
         logging.warning("Particle pathlength is outside of training domain! Good luck!")
     if temp > 0.650 or temp < 0.150:
@@ -532,7 +526,7 @@ def aniso_rad_dist(particle: hard_particles.Particle, medium: plasma.plasma,
 
     # Compute number distribution of radiation generated in this step
     dtau_rad_dist = nn.compute_dNd3k_grid(
-        E=particle.E0,  # Use E0 to avoid rescaling the meaning of x between steps
+        E=particle.E,
         z0=particle.tau / hbarc,  # tau is in fm, need to give to NN in GeV^{-1}
         # zf=(particle.tau + delta_pathlength) / hbarc,  # tau & dtau are in fm, need to give to NN in GeV^{-1}
         u_perp=uperp,
@@ -681,7 +675,7 @@ def E_gluons(particle: hard_particles.Particle, medium: plasma.plasma, dtau: flo
     else:
         # Default to quark CF
         CR = 4 / 3
-    E = particle.E0  # Uses particle E0, since we are deploying this with the similar choice made in querying the NN.
+    E = particle.E
     point = particle.coords
     temp = medium.temp(point)[0]
     if temp == np.nan:  # Cancel evolution if we exit the plasma space
@@ -724,7 +718,7 @@ def N_gluons(particle: hard_particles.Particle, medium: plasma.plasma, dtau: flo
     else:
         # Default to quark CF
         CR = 4 / 3
-    E = particle.E0  # Uses particle E0, since we are deploying this with the similar choice made in querying the NN.
+    E = particle.E
     point = particle.coords
     temp = medium.temp(point)[0]
     if temp == np.nan:  # Cancel evolution if we exit the plasma space
@@ -747,7 +741,7 @@ def N_gluons(particle: hard_particles.Particle, medium: plasma.plasma, dtau: flo
     log_factor = np.log(L * (mu ** 2) / (2 * E * xmin))
 
     # Note here that the 1/2 inside the log is scheme dependent. It also is a constant, so leading log approximations
-    # often drop it. Don't be too perturbed by its presence or abcense in different works.
+    # often drop it. Don't be too perturbed by its presence or absence in different works.
     return ((CR * ALPHAS/np.pi) * intdz * inv_lambda_val
             * log_factor**2)
 
@@ -940,7 +934,7 @@ def N_gluons_fk(particle: hard_particles.Particle, medium: plasma.plasma, dtau: 
     for x in x_vals:
 
         mean, sdev = dNdx(
-            x, E=particle.E0, rho0=rho(particle, medium), mu=0.5, alpha_s=0.3,
+            x, E=particle.E, rho0=rho(particle, medium), mu=0.5, alpha_s=0.3,
             z0=0.0, zf=5.0,
         )
         int_vals.append(mean)
