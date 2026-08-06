@@ -115,6 +115,7 @@ class jet:
     EMIN = float(cfg['jet']['EMIN'])
     RAD_MODEL = str(cfg['jet']['RAD_MODEL'])
     COL_MODEL = str(cfg['jet']['COL_MODEL'])
+    RAD_GENS = int(cfg['jet']['RAD_GENS'])
     class hadronization:
         FRAG = bool(cfg['jet']['hadronization']['FRAG'])
         STRING = bool(cfg['jet']['hadronization']['STRING'])

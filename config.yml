@@ -57,6 +57,7 @@ jet:  # Parameters for the jet production processes to be run
     EMIN: 3.0  # Minimum energy for particle to be evolved in the medium. Particle gets random thermal final momentum.
     RAD_MODEL: "aniso_NN"  # Choice of radiation module. "iso_analytic" or "aniso_NN"
     COL_MODEL: "flow"  # Choice of elastic scattering module. "flow" or "flowgrad"
+    RAD_GENS:  1  # Number of radiation generations to evolve -- Subsequent emissions are considered thermalized
     hadronization:
         FRAG: True  # Whether to run fragmentation hadronization
         STRING: True  # Whether to run string hadronization

@@ -474,7 +474,7 @@ try:
             """
             round_no = 0
             passed_particles = 0
-            max_rad_gens = 1  # Maximum number of emissions from a single hard particle lineage
+            max_rad_gens = config.jet.RAD_GENS  # Maximum number of emissions from a single hard particle lineage
 
             if config.jet.RAD_MODEL == "None":
                 logging.warning("No radiation enabled!")
