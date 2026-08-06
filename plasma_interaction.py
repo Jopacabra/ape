@@ -516,6 +516,16 @@ def aniso_rad_dist(particle: hard_particles.Particle, medium: plasma.plasma,
     delta_t, delta_x, delta_y, delta_z = particle.next_pathlength(dtau, cart=True)
     delta_pathlength = np.sqrt(delta_x ** 2 + delta_y ** 2 + delta_z ** 2)
 
+    # Perform longitudinal boost to longitudinal rest frame of the fluid -- ???
+    """
+    Right now, we're only incorporating the transverse flow. The calculation was done in the longitudinal rest frame
+    of the fluid. We can easily get around this by performing a boost to the longitudinal rest frame of the fluid, then
+    simply boosting the resulting distribution back to the lab frame. In truth, there may be gauge invariance problems
+    that are related to this assumption.
+    
+    For this testing version, we have not yet implemented the longitudinal boost.
+    """
+
     # Warn if we're outside our training domain
     if particle.tau + delta_pathlength / hbarc > 50.0:
         logging.warning("Particle pathlength is outside of training domain! Good luck!")
@@ -538,6 +548,11 @@ def aniso_rad_dist(particle: hard_particles.Particle, medium: plasma.plasma,
 
     # Mirror across ky -- Flip array excluding zero element, then concat along that axis.
     dtau_rad_dist = np.concat((np.flip(dtau_rad_dist[:, 1:, :], axis=1), dtau_rad_dist), axis=1)
+
+    # Perform longitudinal boost to back to lab frame -- ???
+    """
+    For this testing version, we have not yet implemented the longitudinal boost.
+    """
 
     return CR * dtau_rad_dist
 
