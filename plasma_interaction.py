@@ -304,12 +304,12 @@ def collisional_delta(particle: hard_particles.Particle, medium: plasma.plasma, 
     # Gather particle and medium properties.
     p = particle.p3
     point = particle.coords
-    temp = medium.temp(point)[0]
+    temp = medium.temp(point).item()
     if temp == np.nan:  # Cancel evolution if we exit the plasma space
         raise NoMedium()
     elif temp < config.jet.T_HRG:  # Cancel evolution if we exit the plasma phase
         raise HadronGas()
-    u = np.array([float(medium.x_vel(point)[0]), float(medium.y_vel(point)[0]), float(medium.z_vel(point))])
+    u = np.array([float(medium.x_vel(point).item()), float(medium.y_vel(point).item()), float(medium.z_vel(point).item())])
 
     # Get perp and parallel medium flow velocity
     uperp = utilities.perp_vec(a=u, b=p)
@@ -353,12 +353,12 @@ def collisional_delta_linear_gradients(particle: hard_particles.Particle, medium
     # Gather particle and medium properties.
     p = particle.p3
     point = particle.coords
-    temp = medium.temp(point)[0]
+    temp = medium.temp(point).item()
     if temp == np.nan:  # Cancel evolution if we exit the plasma space
         raise NoMedium()
     elif temp < config.jet.T_HRG:  # Cancel evolution if we exit the plasma phase
         raise HadronGas()
-    u = np.array([float(medium.x_vel(point)[0]), float(medium.y_vel(point)[0]), float(medium.z_vel(point))])
+    u = np.array([float(medium.x_vel(point).item()), float(medium.y_vel(point).item()), float(medium.z_vel(point).item())])
 
     # Get perp and parallel medium flow velocity
     uperp = utilities.perp_vec(a=u, b=p)
@@ -427,7 +427,7 @@ def rad_delta(particle: hard_particles.Particle, medium: plasma.plasma, dtau: fl
     # Gather particle and medium properties.
     p = particle.p3
     point = particle.coords
-    temp = medium.temp(point)[0]
+    temp = medium.temp(point).item()
     if temp == np.nan:  # Cancel evolution if we exit the plasma space
         raise NoMedium()
     elif temp < config.jet.T_HRG:  # Cancel evolution if we exit the plasma phase
@@ -498,12 +498,12 @@ def aniso_rad_dist(particle: hard_particles.Particle, medium: plasma.plasma,
         CR = 4/3
     p = particle.p3
     point = particle.coords
-    temp = medium.temp(point)[0]
+    temp = medium.temp(point).item()
     if temp == np.nan:  # Cancel evolution if we exit the plasma space
         raise NoMedium()
     elif temp < config.jet.T_HRG:  # Cancel evolution if we exit the plasma phase
         raise HadronGas()
-    u = np.array([float(medium.x_vel(point)[0]), float(medium.y_vel(point)[0]), float(medium.z_vel(point))])
+    u = np.array([float(medium.x_vel(point).item()), float(medium.y_vel(point).item()), float(medium.z_vel(point).item())])
     uperp = np.linalg.norm(utilities.perp_vec(a=u, b=p))
 
     # Get pathlength traveled in this step
@@ -559,7 +559,7 @@ def lf_emission_momentum(k: np.ndarray, particle, medium: plasma.plasma):
     # Gather particle and medium properties.
     p = particle.p3
     point = particle.coords
-    u = np.array([float(medium.x_vel(point)[0]), float(medium.y_vel(point)[0]), float(medium.z_vel(point))])
+    u = np.array([float(medium.x_vel(point).item()), float(medium.y_vel(point).item()), float(medium.z_vel(point).item())])
     uperp = perp_vec(a=u, b=p)
     uperp_mag = np.linalg.norm(uperp)
 
@@ -587,7 +587,7 @@ def rotate_rad_dist(particle: hard_particles.Particle, medium: plasma.plasma, ra
     # Gather particle and medium properties.
     p = particle.p3
     point = particle.coords
-    u = np.array([float(medium.x_vel(point)[0]), float(medium.y_vel(point)[0]), float(medium.z_vel(point))])
+    u = np.array([float(medium.x_vel(point).item()), float(medium.y_vel(point).item()), float(medium.z_vel(point).item())])
     uperp = perp_vec(a=u, b=p)
 
     # By construction, the gluon kinematics correspond to:
@@ -686,7 +686,7 @@ def E_gluons(particle: hard_particles.Particle, medium: plasma.plasma, dtau: flo
         CR = 4 / 3
     E = particle.E
     point = particle.coords
-    temp = medium.temp(point)[0]
+    temp = medium.temp(point).item()
     if temp == np.nan:  # Cancel evolution if we exit the plasma space
         raise NoMedium()
     elif temp < config.jet.T_HRG:  # Cancel evolution if we exit the plasma phase
@@ -729,7 +729,7 @@ def N_gluons(particle: hard_particles.Particle, medium: plasma.plasma, dtau: flo
         CR = 4 / 3
     E = particle.E
     point = particle.coords
-    temp = medium.temp(point)[0]
+    temp = medium.temp(point).item()
     if temp == np.nan:  # Cancel evolution if we exit the plasma space
         raise NoMedium()
     elif temp < config.jet.T_HRG:  # Cancel evolution if we exit the plasma phase
@@ -831,7 +831,7 @@ def aniso_nn(particle: hard_particles.Particle, plasma_object: plasma.plasma, dt
     Then, sample the kinematics of the emitted particles from the distribution.
     """
     # Hard coded options
-    fix_rate = True  # Whether or not to replace the integral of the radiation spectrum with the analytic estimate.
+    fix_rate = False  # Whether or not to replace the integral of the radiation spectrum with the analytic estimate.
 
     # Compute radiation kinematic bounds -- see https://arxiv.org/abs/nucl-th/0112071
     point = particle.coords
@@ -886,6 +886,9 @@ def aniso_nn(particle: hard_particles.Particle, plasma_object: plasma.plasma, dt
             rate = N_gluons(particle=particle, medium=plasma_object, dtau=dtau) / dtau
         else:
             rate = total_number / dtau
+            if rate < 0:
+                rate = 0.000000001  # small
+            # logging.debug(f"Ratio over analytic: {rate / (N_gluons(particle=particle, medium=plasma_object, dtau=dtau) / dtau)}")
 
         # Ogatta-thinning style sample for next emission position
         tau_to_emit = rng.exponential(1.0 / rate)
@@ -903,11 +906,10 @@ def aniso_nn(particle: hard_particles.Particle, plasma_object: plasma.plasma, dt
             logging.warning("Gluon kinematics rejected. Skipping emissions.")
             tau = next_tau
             continue
-        logging.debug(f"Emitting gluon! Radiation frame info:")
+        logging.debug(f"Emitting gluon! Radiation frame momentum:")
 
         # If we rescale energies, do it!
         # Compute expected energy of emitted gluons
-        logging.debug(f"p = {particle.p3} GeV")
         logging.debug(f"k = {k} GeV")
 
         # Check if gluon is backward facing -- This shouldn't happen from a single step's radiation,
@@ -919,7 +921,9 @@ def aniso_nn(particle: hard_particles.Particle, plasma_object: plasma.plasma, dt
 
         # Transform emission momentum to lab frame
         k = lf_emission_momentum(k=k, particle=particle, medium=plasma_object)
+        logging.debug(f"Lab frame momentum:")
         logging.debug(f"k = {k} GeV")
+        logging.debug(f"p = {particle.p3} GeV")
 
         # Append momenta to list for this step
         emission_momenta.append(k)
