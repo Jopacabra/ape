@@ -126,7 +126,7 @@ def evolve_particle(particle : hard_particles.Particle, plasma_object : plasma.p
                     break
 
                 rad_dt = time.time() - rad_t0
-                logging.debug(f"Radiation computed in {rad_dt}s")
+                # logging.debug(f"Radiation computed in {rad_dt}s")
 
                 ###############
                 # Collisional #
