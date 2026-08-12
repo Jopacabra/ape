@@ -15,19 +15,22 @@ import json
 import shutil
 import logging
 import config
-from hic import initial
 import utilities
 import plasma
 from itertools import groupby
 
 try:
+    from hic import initial
+except:
+    logging.warning('hic package not found. Cannot generate Duke events.')
+try:
     import freestream
 except:
-    logging.warning('freestream not found.')
+    logging.warning('freestream package not found. Cannot generate Duke events.')
 try:
     import frzout
 except:
-    logging.warning('frzout not found.')
+    logging.warning('frzout package not found. Cannot generate Duke events.')
 
 """
 This module is responsible for all processes related to event generation & hard scattering.
