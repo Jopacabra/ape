@@ -450,6 +450,9 @@ try:
 
             if config.jet.hadronization.STRING:
                 logging.info('String hadronizing vacuum result...')
+                if not config.jet.hadronization.COLOR_FLOW:
+                    logging.debug('Color flow disabled, using proximity-based color reconnection.')
+                    hard_event.proximity_color()
                 vacuum_event_hadrons, pp_string_success = pythia.ape_to_pythia(hard_event)
                 if not pp_string_success:
                     logging.error("pp event hadronization failure -- Aborting this event")

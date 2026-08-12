@@ -710,6 +710,249 @@ class EventRecord(Generic[ParticleT]):
 
         return emission
 
+    def proximity_color(
+            self,
+            parton_indices: Optional[Sequence[int]] = None,
+            remnant_id: int = 1,
+            remnant_pz: float = 50.0,
+            remnant_pt: float = 0.2,
+    ) -> None:
+        """
+        Perform proximity-based repairing of parton color/anticolor indices.
+
+        This reimplements the core color-reconstruction logic used by JETSCAPE's
+        ColorlessHadronization module (its PYTHIA Lund-string hadronization
+        interface):
+
+          1. Quarks/antiquarks are paired into "strings" by iteratively matching
+             each unpaired quark to its angularly closest (min delta_R) unpaired
+             partner.
+          2. If no quarks are available (or a quark is left without a partner),
+             fake beam-remnant quarks flying down +/-pz are attached to close
+             off the string(s), mirroring JETSCAPE's remnant-momentum trick.
+          3. Gluons are assigned to whichever string's two endpoints they are
+             (on average) closest to.
+          4. Each string's gluons are then chained together in nearest-neighbor
+             order starting from one string endpoint, assigning sequential
+             color/anticolor indices along the chain.
+          5. Quark PDG ids are flipped, if needed, so that a nonzero `col`
+             corresponds to a particle (positive id) and a nonzero `acol`
+             corresponds to an antiparticle (negative id).
+
+        delta_R here is computed from (rapidity, azimuthal angle) using each
+        particle's momentum, analogous to fastjet's PseudoJet::delta_R() used
+        in the original JETSCAPE implementation.
+
+        Parameters
+        ----------
+        parton_indices:
+            Indices into `self.particles` identifying which partons should have
+            their colors repaired. Defaults to all currently-live (status > 0)
+            quarks/antiquarks/gluons in the record.
+        remnant_id:
+            PDG id (must be a light quark, 1-6) used for any fake remnant quarks
+            that need to be attached to close off unpaired strings.
+        remnant_pz:
+            Magnitude of the longitudinal momentum given to remnant quarks
+            (they are shot down +pz or -pz).
+        remnant_pt:
+            Magnitude of the (px, py) components given to remnant quarks.
+        """
+        if parton_indices is None:
+            parton_indices = [
+                i for i, p in enumerate(self.particles)
+                if p.status > 0 and (abs(p.id) <= 6 or p.id == 21)
+            ]
+        else:
+            parton_indices = list(parton_indices)
+
+        if not parton_indices:
+            return
+
+        pIn: list[int] = list(parton_indices)
+
+        def phi_of(idx: int) -> float:
+            p = self.particles[idx]
+            return math.atan2(p.py, p.px)
+
+        def delta_R(idx1: int, idx2: int) -> float:
+            p1 = self.particles[idx1]
+            p2 = self.particles[idx2]
+            deta = p1.rap - p2.rap
+            dphi = phi_of(idx1) - phi_of(idx2)
+            dphi = (dphi + math.pi) % (2.0 * math.pi) - math.pi
+            return math.hypot(deta, dphi)
+
+        def add_remnant(pz_sign: float) -> int:
+            """Attach a fake beam-remnant quark flying down +/-pz."""
+            logging.warning("!" * 100)
+            logging.warning("BEAM REMNANT REQUIRED!!!")
+            logging.warning("!" * 100)
+            new_particle = Particle(
+                id=remnant_id,
+                px=remnant_pt,
+                py=remnant_pt,
+                pz=pz_sign * remnant_pz,
+                tau=self.event_tau0,
+                x=self.event_x0,
+                y=self.event_y0,
+                etas=self.event_etas0,
+                status=1,
+                tag=len(self.particles),
+            )
+            new_idx = len(self.particles)
+            self.append(new_particle)
+            return new_idx
+
+        # Identify quarks/antiquarks among the selected partons
+        isquark: list[int] = [i for i in pIn if abs(self.particles[i].id) <= 6]
+        nquarks = len(isquark)
+
+        isdone: dict[int, bool] = {i: False for i in pIn}
+        one_end: list[int] = []
+        two_end: list[int] = []
+
+        # If no quarks are present, seed a single string with two remnants
+        if nquarks == 0:
+            idx1 = add_remnant(+1.0)
+            pIn.append(idx1)
+            isquark.append(idx1)
+            isdone[idx1] = True
+            one_end.append(idx1)
+
+            idx2 = add_remnant(-1.0)
+            pIn.append(idx2)
+            isquark.append(idx2)
+            isdone[idx2] = True
+            two_end.append(idx2)
+
+        # Pair up quarks into strings, always matching to the closest
+        # remaining unpaired quark (order matters, as in the original algo)
+        for iq in range(len(isquark)):
+            q_idx = isquark[iq]
+            if isdone.get(q_idx, False):
+                continue
+            isdone[q_idx] = True
+            one_end.append(q_idx)
+
+            min_delR = float("inf")
+            partner = None
+            for jq in isquark:
+                if jq == q_idx or isdone.get(jq, False):
+                    continue
+                dR = delta_R(q_idx, jq)
+                if dR < min_delR:
+                    min_delR = dR
+                    partner = jq
+
+            if partner is not None:
+                isdone[partner] = True
+                two_end.append(partner)
+            else:
+                # No partner available -- close off the string with a remnant
+                new_idx = add_remnant(+1.0)
+                pIn.append(new_idx)
+                isquark.append(new_idx)
+                isdone[new_idx] = True
+                two_end.append(new_idx)
+
+        nstrings = len(one_end)
+
+        # Assign each gluon to whichever string it is (on average) closest to
+        gluon_indices = [i for i in pIn if self.particles[i].id == 21]
+        my_string: dict[int, int] = {}
+        for g_idx in gluon_indices:
+            min_delR = float("inf")
+            best_string = 0
+            for ns in range(nstrings):
+                dR = 0.5 * (
+                        delta_R(g_idx, one_end[ns]) + delta_R(g_idx, two_end[ns])
+                )
+                if dR < min_delR:
+                    min_delR = dR
+                    best_string = ns
+            my_string[g_idx] = best_string
+
+        # Build color chains along each string, linking gluons in
+        # nearest-neighbor order and propagating alternating color/anticolor
+        col: dict[int, int] = {}
+        acol: dict[int, int] = {}
+        lab_col = max(
+            [1] + [self.particles[i].col or 0 for i in range(len(self.particles))]
+            + [self.particles[i].acol or 0 for i in range(len(self.particles))]
+        ) + 1
+
+        gluon_done = {g: False for g in gluon_indices}
+
+        for ns in range(nstrings):
+            tquark = one_end[ns]
+            if self.particles[tquark].id > 0:
+                col[tquark] = lab_col
+            else:
+                acol[tquark] = lab_col
+            lab_col += 1
+
+            link = tquark
+            while True:
+                min_delR = float("inf")
+                next_link = None
+                for g_idx in gluon_indices:
+                    if gluon_done[g_idx] or my_string[g_idx] != ns:
+                        continue
+                    dR = delta_R(link, g_idx)
+                    if dR < min_delR:
+                        min_delR = dR
+                        next_link = g_idx
+
+                if next_link is None:
+                    break
+
+                gluon_done[next_link] = True
+                if col.get(link) == lab_col - 1:
+                    col[next_link] = lab_col
+                    acol[next_link] = lab_col - 1
+                else:
+                    col[next_link] = lab_col - 1
+                    acol[next_link] = lab_col
+                lab_col += 1
+                link = next_link
+
+            # Close off the string at its second quark end
+            tail = two_end[ns]
+            if col.get(link) == lab_col - 1:
+                col[tail] = 0
+                acol[tail] = lab_col - 1
+            else:
+                col[tail] = lab_col - 1
+                acol[tail] = 0
+
+        # Apply the computed color/anticolor indices
+        for idx in pIn:
+            self.particles[idx].col = col.get(idx, 0)
+            self.particles[idx].acol = acol.get(idx, 0)
+
+        # Fix quark identities to stay consistent with assigned color charge:
+        # a nonzero `col` must belong to a particle, a nonzero `acol` to an
+        # antiparticle.
+        for q_idx in isquark:
+            p = self.particles[q_idx]
+            if col.get(q_idx, 0) != 0:
+                if p.id < 0:
+                    p.id = -p.id
+            elif p.id > 0:
+                p.id = -p.id
+            else:
+                continue
+
+            # Refresh derived identity fields after any pid flip
+            info = _PARTICLE_SPECIES[p.id]
+            p.name = str(info["name"])
+            p.m0 = float(info["m0"])
+            try:
+                p.m = float(info["m"])
+            except Exception:
+                p.m = None
+
     def copy(self, *, deep_particles: bool = True) -> "EventRecord[ParticleT]":
         """
         Copy the event record.

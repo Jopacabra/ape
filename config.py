@@ -120,6 +120,7 @@ class jet:
     class hadronization:
         FRAG = bool(cfg['jet']['hadronization']['FRAG'])
         STRING = bool(cfg['jet']['hadronization']['STRING'])
+        COLOR_FLOW = bool(cfg['jet']['hadronization']['COLOR_FLOW'])
 
 
 # Global constants

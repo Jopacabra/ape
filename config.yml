@@ -62,6 +62,7 @@ jet:  # Parameters for the jet production processes to be run
     hadronization:
         FRAG: True  # Whether to run fragmentation hadronization
         STRING: True  # Whether to run string hadronization
+        COLOR_FLOW:  False  # Whether to retain Pythia shower & color connections of radiation for string hadronization
 global_constants:  # Physical constants to be set by the user.
     # Coupling is set by case selection in ebe scripts. Uses G_RAD by default.
     G: 2.1  # Coupling constant for IN-MEDIUM strong interaction
