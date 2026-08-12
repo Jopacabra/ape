@@ -1,5 +1,4 @@
 import numpy as np
-from xarray.ufuncs import invert
 
 import config
 import hard_particles
