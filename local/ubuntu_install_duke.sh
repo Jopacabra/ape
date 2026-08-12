@@ -9,8 +9,8 @@ SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 
 # Activate conda
 export VIRTUAL_ENV='ape'
-source ~/anaconda3/bin/activate ~/anaconda3/envs/$VIRTUAL_ENV
-#conda activate ape
+eval "$(conda shell.bash hook)"
+conda activate $VIRTUAL_ENV
 
 # Debug print of working directory
 # Go to ape directory
