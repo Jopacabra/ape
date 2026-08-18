@@ -474,42 +474,18 @@ def aniso_rad_delta(particle: hard_particles.Particle, medium: plasma.plasma, k:
 
 
 # Radiation distribution summoner
-def aniso_rad_dist(particle: hard_particles.Particle, medium: plasma.plasma,
-                   kz_values: np.ndarray, kx_values: np.ndarray, ky_values: np.ndarray, dtau: float, nn=None):
+def aniso_rad_dist(E: float, tau: float, temp: float, uperp: float,
+                   x_values: np.ndarray, k_perp_values: np.ndarray, phi_values: np.ndarray,
+                   dtau: float, nn=None):
     """
     Function that generates a 3D numpy array of the number distribution of emitted gluons over the current step in the
-    medium. ky_values should be an even number of points symmetric about 0 so we can mirror points along this axis.
+    medium, up to a casimir factor (Don't forget to apply it to the results of this function!).
 
-    Returns in the parton frame organized (kx, ky, kz)
+    Returns in the parton frame organized (kperp, phi, x)
     """
-    # assert len(ky_values) % 2 == 0  # Array has an even number of entries
-    assert np.array_equal(ky_values, -ky_values[::-1])  # Array is symmetric about 0
-    assert np.all(kz_values > 0), "kz_values must contain only positive numbers"
     hbarc = 0.1973269804  # GeV * fm
 
-    # Gather particle and medium properties.
-    if particle.isq:
-        CR = 4/3
-    elif particle.isg:
-        CR = 3
-    else:
-        # Default to quark CF
-        CR = 4/3
-    p = particle.p3
-    point = particle.coords
-    temp = medium.temp(point).item()
-    if temp == np.nan:  # Cancel evolution if we exit the plasma space
-        raise NoMedium()
-    elif temp < config.jet.T_HRG:  # Cancel evolution if we exit the plasma phase
-        raise HadronGas()
-    u = np.array([float(medium.x_vel(point).item()), float(medium.y_vel(point).item()), float(medium.z_vel(point).item())])
-    uperp = np.linalg.norm(utilities.perp_vec(a=u, b=p))
-
-    # Get pathlength traveled in this step
-    delta_t, delta_x, delta_y, delta_z = particle.next_pathlength(dtau, cart=True)
-    delta_pathlength = np.sqrt(delta_x ** 2 + delta_y ** 2 + delta_z ** 2)
-
-    # Perform longitudinal boost to longitudinal rest frame of the fluid -- ???
+    # Perform longitudinal boost to longitudinal rest frame of the fluid
     """
     Right now, we're only incorporating the transverse flow. The calculation was done in the longitudinal rest frame
     of the fluid. We can easily get around this by performing a boost to the longitudinal rest frame of the fluid, then
@@ -520,7 +496,7 @@ def aniso_rad_dist(particle: hard_particles.Particle, medium: plasma.plasma,
     """
 
     # Warn if we're outside our training domain
-    if particle.tau + delta_pathlength / hbarc > 50.0:
+    if (tau + dtau) / hbarc > 50.0:
         logging.warning("Particle pathlength is outside of training domain! Good luck!")
     if temp > 0.650 or temp < 0.150:
         logging.warning("Temperature is outside of training domain! Good luck!")
@@ -528,26 +504,23 @@ def aniso_rad_dist(particle: hard_particles.Particle, medium: plasma.plasma,
         logging.warning("Perp. velocity is outside of training domain! Good luck!")
 
     # Compute number distribution of radiation generated in this step
-    dtau_rad_dist = nn.compute_dNd3k_grid(
-        E=particle.E,
-        z0=particle.tau / hbarc,  # tau is in fm, need to give to NN in GeV^{-1}
-        # zf=(particle.tau + delta_pathlength) / hbarc,  # tau & dtau are in fm, need to give to NN in GeV^{-1}
+    dtau_rad_dist = nn.compute_dNdxd2k_grid(
+        E=E,
+        z0=tau / hbarc,  # tau is in fm, need to give to NN in GeV^{-1}
         u_perp=uperp,
         T=temp,
         g=config.constants.G,
-        kx_values=kx_values,
-        ky_values=ky_values[ky_values >= 0],  # Compute only for ky >= 0
-        kz_values=kz_values)  # Should pass only positive kz values
+        k_perp_values=k_perp_values,
+        phi_values=phi_values,
+        x_values=x_values,
+        mu=mu_DeBye(T=temp))  # For kinematic cuts
 
-    # Mirror across ky -- Flip array excluding zero element, then concat along that axis.
-    dtau_rad_dist = np.concat((np.flip(dtau_rad_dist[:, 1:, :], axis=1), dtau_rad_dist), axis=1)
-
-    # Perform longitudinal boost to back to lab frame -- ???
+    # Perform longitudinal boost to back to lab frame
     """
     For this testing version, we have not yet implemented the longitudinal boost.
     """
 
-    return CR * dtau_rad_dist
+    return dtau_rad_dist
 
 
 def lf_emission_momentum(k: np.ndarray, particle, medium: plasma.plasma):
@@ -574,98 +547,6 @@ def lf_emission_momentum(k: np.ndarray, particle, medium: plasma.plasma):
 
     # Return transformed momentum 3-vector
     return np.array(k[0]*k_x_hat + k[1]*k_y_hat + k[2]*k_z_hat)
-
-
-def rotate_rad_dist(particle: hard_particles.Particle, medium: plasma.plasma, rad_dist: np.ndarray,
-                    kx_values: np.ndarray, ky_values: np.ndarray, kz_values: np.ndarray):
-    """
-    Function that rotates a radiation distribution in kx, ky, kz in the parton frame into the lab frame.
-
-    """
-    # Find axes
-    # Gather particle and medium properties.
-    p = particle.p3
-    point = particle.coords
-    u = np.array([float(medium.x_vel(point).item()), float(medium.y_vel(point).item()), float(medium.z_vel(point).item())])
-    uperp = perp_vec(a=u, b=p)
-
-    # By construction, the gluon kinematics correspond to:
-    k_z_hat = p / np.linalg.norm(p)  # Direction of k_z is parallel to the hard particle
-    k_x_hat = uperp / np.linalg.norm(uperp)  # Direction of k_x is parallel to the transverse flow
-    k_y_hat = np.cross(k_z_hat, k_x_hat)  # Direction of k_y is perp to both of the above, k_x x k_y = k_z, permute to k_z x k_x = k_y
-
-    # # Transpose rad_dist from (kz, kx, ky) -> (kx, ky, kz)
-    # dist_kxkykz = rad_dist.transpose(1, 2, 0)  # Shape: (m, m, n)
-    dist_kxkykz = rad_dist  # Should already be in (kx, ky, kz), shape (m, m, n)
-
-    # Compute the input integral (np.trapezoid handles integration of arbitrary spacing via coordinates)
-    integral_before = np.trapezoid(
-        np.trapezoid(
-            np.trapezoid(dist_kxkykz, kz_values, axis=2),
-            ky_values, axis=1),
-        kx_values, axis=0)
-
-    # Build rotation matrix R: columns are k_x_hat, k_y_hat, k_z_hat in (x,y,z) space.
-    # R transforms a (kx, ky, kz) vector to (x, y, z): v_xyz = R @ v_k
-    # R^T (= R^-1 for orthonormal R) transforms (x, y, z) back to (kx, ky, kz): v_k = R^T @ v_xyz
-    R = np.column_stack([k_x_hat, k_y_hat, k_z_hat])  # Shape: (3, 3)
-
-    # Build a meshgrid of output (x, y, z) coordinates using the same grid ranges as the input
-    x_values = kx_values
-    y_values = ky_values
-    z_values = kz_values
-
-    # Build output grid in (x, y, z) and find corresponding (kx, ky, kz) source coordinates via R^T
-    xg, yg, zg = np.meshgrid(x_values, y_values, z_values, indexing='ij')  # Each shape: (m, m, n)
-    xyz = np.stack([xg.ravel(), yg.ravel(), zg.ravel()], axis=0)  # Shape: (3, m*m*n)
-
-    # Apply inverse rotation to map output (x,y,z) grid back to source (kx,ky,kz) coordinates
-    k_coords = R.T @ xyz  # Shape: (3, m*m*n); rows are kx, ky, kz source coords
-
-    # Convert source (kx, ky, kz) coordinates to fractional array indices in dist_kxkykz
-    # Interpolates between coordinates to allow for any grid spacing in any axis (log, linear, etc.)
-    # Convert source (kx, ky, kz) coordinates to fractional array indices in dist_kxkykz
-    # Use searchsorted-based linear mapping instead of np.interp to allow out-of-bounds indices
-    # (np.interp clamps to edge values, preventing map_coordinates from correctly zeroing them)
-    def coords_to_index(coords, grid):
-        """Linearly map coordinate values to fractional array indices, allowing out-of-bounds."""
-        # For uniform or non-uniform grids: find fractional index by linear interpolation of the inverse map
-        indices = np.interp(coords, grid, np.arange(len(grid)),
-                            left=-(len(grid)), right=2 * len(grid))  # force OOB indices far outside
-        return indices
-
-    idx_kx = coords_to_index(k_coords[0], kx_values)
-    idx_ky = coords_to_index(k_coords[1], ky_values)
-    idx_kz = coords_to_index(k_coords[2], kz_values)
-
-    # idx_kx = np.interp(k_coords[0], kx_values, np.arange(len(kx_values)))
-    # idx_ky = np.interp(k_coords[1], ky_values, np.arange(len(ky_values)))
-    # idx_kz = np.interp(k_coords[2], kz_values, np.arange(len(kz_values)))
-
-    # Apply rotation
-    # Interpolate dist_kxkykz at the source fractional indices; points outside bounds are set to 0
-    # Use scipy.ndimage.map_coordinates to perform the interpolation of points into the new axes.
-    rotated_flat = map_coordinates(dist_kxkykz, [idx_kx, idx_ky, idx_kz], order=1, mode='constant', cval=0.0)
-    rotated_rad_dist = rotated_flat.reshape(len(x_values), len(y_values), len(z_values))  # Shape: (m, m, n)
-
-    # Rescale to conserve the numerical integral.
-    # Any signal whose rotated source coordinates fell outside the input grid was set to 0 by
-    # map_coordinates. We compensate by rescaling the captured shape to match the original integral.
-    # (np.trapezoid handles integration of arbitrary spacing via coordinates)
-    integral_after = np.trapezoid(
-        np.trapezoid(
-            np.trapezoid(rotated_rad_dist, z_values, axis=2),
-            y_values, axis=1),
-        x_values, axis=0)
-
-    if integral_after != 0.0:
-        rotated_rad_dist *= integral_before / integral_after
-
-    change = (integral_after - integral_before) / integral_before
-    if change > 0.1:
-        logging.warning(f"Radiation distribution rotation change: {change*100}%")
-
-    return rotated_rad_dist
 
 
 def E_gluons(particle: hard_particles.Particle, medium: plasma.plasma, dtau: float):
@@ -754,19 +635,26 @@ def N_gluons(particle: hard_particles.Particle, medium: plasma.plasma, dtau: flo
             * log_factor**2)
 
 
-def sample_rad_dist(rad_dist, kx_values, ky_values, kz_values, N_samples=1, kin_cut=True, mu=0.3, E=10.0):
+def sample_rad_dist(rad_dist, k_perp_values, phi_values, x_values, N_samples=1, kin_cut=True, mu=0.3, E=10.0):
     """
     Function to sample radiation distribution for kx, ky, kz.
-    Treat dI/(dxdkxdky) as an (unnormalized) 3D probability density and draw N_samples points (kx, ky, kz) from it.
+    Treat dI/(dx d^2 k) as an (unnormalized) 3D probability density and draw N_samples points (k_perp, phi, x).
+    Then, convert to cartesian coordinate vector (kx, ky, kz) and return.
     """
+    # Compute kinematic bounds
+    x_min = mu / E
+    x_max = 1.0 - mu / E
+    kperp_min = mu
+    kperp_max = lambda x : np.sqrt((E ** 2) * np.minimum(x ** 2, (1.0 - x) ** 2) - mu ** 2)
+
     # Build a normalized flat PDF, then a CDF
     # Compute bin widths using gradient (handles non-uniform spacing)
-    dkx = np.gradient(kx_values)  # shape: (len(kx_values),)
-    dky = np.gradient(ky_values)  # shape: (len(ky_values),)
-    dkz = np.gradient(kz_values)  # shape: (len(kz_values),)
+    dkperp = np.gradient(k_perp_values)  # shape: (len(k_perp_values),)
+    dphi = np.full_like(phi_values, 2 * np.pi / len(phi_values))  # shape: (len(phi_values),) -- phi periodic!
+    dx = np.gradient(x_values)  # shape: (len(x_values),)
 
-    # Build 3D volume element array via outer products
-    dV = dkx[:, None, None] * dky[None, :, None] * dkz[None, None, :]  # shape: (Nkx, Nky, Nkz)
+    # Build 3D volume element array via outer products -- includes Jacobian factor for the angular differential
+    dV = (k_perp_values * dkperp)[:, None, None] * dphi[None, :, None] * dx[None, None, :]  # shape: (Nkperp, Nphi, Nx)
 
     # Flatten the 3D intensity array into a 1D array of probabilities (note multiplication by bin volume)
     I_flat = (rad_dist * dV).ravel()
@@ -775,89 +663,202 @@ def sample_rad_dist(rad_dist, kx_values, ky_values, kz_values, N_samples=1, kin_
     cdf = np.cumsum(pdf)  # build CDF
     cdf[-1] = 1.0  # Force exact upper bound — removes all floating point slop
 
-    failed = False
-    for i in np.arange(0, 1000):  # Limit to 1000 attempts, so we can't have any soft locking.
-        # Draw uniform samples and find where they land in the CDF
-        uniform_samples = 1.0 - rng.uniform(size=N_samples)
-        flat_indices = np.searchsorted(cdf, uniform_samples, side="right")  # shape: (N_samples,)
+    # Draw uniform samples and find where they land in the CDF
+    uniform_samples = 1.0 - rng.uniform(size=N_samples)
+    flat_indices = np.searchsorted(cdf, uniform_samples, side="right")  # shape: (N_samples,)
 
-        # Convert flat indices back to 3D grid indices
-        ikx, iky, ikz = np.unravel_index(flat_indices, rad_dist.shape)
+    # Convert flat indices back to 3D grid indices
+    ikperp, iphi, ix = np.unravel_index(flat_indices, rad_dist.shape)
 
-        # Look up the corresponding coordinate values and add jitter about the bin, so we don't sample exactly on the points
-        sampled_kx = kx_values[ikx] + rng.uniform(-0.5, 0.5, size=N_samples) * dkx[ikx]
-        sampled_ky = ky_values[iky] + rng.uniform(-0.5, 0.5, size=N_samples) * dky[iky]
-        sampled_kz = kz_values[ikz] + rng.uniform(-0.5, 0.5, size=N_samples) * dkz[ikz]
+    # Look up the corresponding coordinate valuesand add jitter about the bin, so we don't sample exactly on the points
+    success = False
+    for i in np.arange(0, 1000):
+        # Iteratively attempt to jitter around the selected coordinates
+        sampled_k_perp = k_perp_values[ikperp] + rng.uniform(-0.5, 0.5, size=N_samples) * dkperp[ikperp]
+        sampled_phi = phi_values[iphi] + rng.uniform(-0.5, 0.5, size=N_samples) * dphi[iphi]
+        sampled_x = x_values[ix] + rng.uniform(-0.5, 0.5, size=N_samples) * dx[ix]
 
-        if kin_cut:
-            failed = False
-            # Check if the sampled point is within the kinematic cuts
-            for kx, ky, kz in zip(sampled_kx, sampled_ky, sampled_kz):
-                kperp2 = (kx**2 + ky**2)
-                x = kz / E
-                if ((kperp2 >= mu**2) and (kperp2 < (4*(E**2) * min(x**2, (1-x)**2) - mu**2)) and (x > mu/(2*E))
-                        and (x < 1 - mu/(2*E))):
-                    pass  # Success
-                else:
-                    failed = True
-                    break
-            if failed:
-                continue  # Sample another set.
-            break  # Successful cut!
-
-
+        # Re-enforce kinematic cuts -- the jitter can take us into unphysical regime -- resample jitter if failed
+        if sampled_x < x_min:
+            continue
+        elif sampled_x > x_max:
+            continue
+        elif sampled_k_perp < kperp_min:
+            continue
+        elif sampled_k_perp > kperp_max(sampled_x):
+            continue
         else:
+            success = True
             break
 
-    if failed:
-        return None
+    # If we failed to successfully sample a momentum, we return nans.
+    if not success:
+        return np.array([np.nan, np.nan, np.nan])
 
-    # Stack values
+    # Convert to cartesian momenta
+    sampled_kx = sampled_k_perp * np.cos(sampled_phi)
+    sampled_ky = sampled_k_perp * np.sin(sampled_phi)
+    # Invert $x = omega / E$ for massless particles
+    sampled_kz = np.sqrt((sampled_x ** 2) * (E ** 2) - (sampled_k_perp ** 2))
+
+    # Stack cartesian values
     emission_momentum = np.column_stack([sampled_kx, sampled_ky, sampled_kz])
 
+    # Return in appropriate shape
     if N_samples == 1:
         return np.reshape(emission_momentum, 3)
     else:
         return emission_momentum
 
 
+# Function to return the current emission rate and a sampled emission
+def aniso_nn_rate_and_k(particle: hard_particles.Particle, medium: plasma.plasma, dtau: float, nn=None):
+    """
+    Compute the radiation number distribution and using a neural network model, then
+
+    Params:
+        particle: hard_particles.Particle
+            The particle to compute the radiation for.
+        medium: plasma.plasma
+            The surrounding plasma environment.
+        dtau: float
+            Step size for the evolution in proper time.
+        nn: Optional
+            The neural network model used to calculate the radiation distribution.
+
+    Returns:
+        tuple: Ng (float), k (list)
+        - Ng is the total integrated number of gluons expected in the macrostep.
+        - k is the sampled kinematics (k_perp, phi, x) of gluon emissions.
+    """
+    #########################################
+    # Gather particle and medium properties #
+    #########################################
+    if particle.isq:
+        CR = 4 / 3
+    elif particle.isg:
+        CR = 3
+    else:
+        logging.error("Invalid particle ID for aniso_nn radiation module!")
+        raise Exception
+    p = particle.p3
+    E = np.linalg.norm(p) # Feed massless energy, since using massless derivation
+    tau = particle.tau
+    point = particle.coords
+    temp = medium.temp(point).item()
+    mu = mu_DeBye(temp)
+    u = np.array(
+        [float(medium.x_vel(point).item()), float(medium.y_vel(point).item()), float(medium.z_vel(point).item())])
+    uperp = np.linalg.norm(utilities.perp_vec(a=u, b=p))
+
+    #############################################################################################################
+    # Compute the extrema of kinematic boundaries on gluon emission and create arrays of the coordinate values. #
+    #############################################################################################################
+    num_x_points = 20  # number of log-spaced points in kz to compute
+    num_k_perp_points = 10  # num of points in kx & ky to compute
+    num_phi_points = 32
+
+    # Compute radiation kinematic bounds -- see https://arxiv.org/abs/nucl-th/0112071
+    x_min = mu / E  # Minimum x based on minimum plasmon frequency
+    x_max = 1 - x_min  # Maximum based on consistency with minimum as an IR regulator
+    k_perp_min = mu  # Minimum k_perp based on minimum plasmon frequency
+    # Note: maximum of ((Min[x^2, (1-x)^2]  * E^2) - mu^2) --> (E^2 - mu^2) / 4
+    k_perp_max = np.sqrt(((E ** 2) - (mu **2)) / 4) # Maxium based on requiring positive z mom. of emission & emitter
+
+    # Create array of points in x
+    x_min_pow = np.log10(x_min)  # minimum power of 10 in x to compute
+    x_max_pow = np.log10(x_max)  # maximum power of 10 in x to compute
+    x_values = np.logspace(x_min_pow, x_max_pow, num_x_points)
+
+    # Create array of points in k_perp
+    k_perp_values = np.linspace(k_perp_min, k_perp_max, num_k_perp_points)
+
+    # Create array of points in phi
+    phi_values = np.linspace(0, 2 * np.pi, num_phi_points, endpoint=False)  # does not include 2pi -- Overlap w/ 0
+
+    # Create the 3D meshgrid coordinates based on t
+    k_perp_grid, _, x_grid = np.meshgrid(k_perp_values, phi_values, x_values, indexing='ij')
+
+    # Get pathlength traveled in this step
+    delta_t, delta_x, delta_y, delta_z = particle.next_pathlength(dtau, cart=True)
+    delta_pathlength = np.sqrt(delta_x ** 2 + delta_y ** 2 + delta_z ** 2)
+
+    ####################################################################################
+    # Compute the radiation distribution on our desired grid using the neural network. #
+    ####################################################################################
+    dtau_rad_dist = CR * aniso_rad_dist(E=E, tau=tau, temp=temp, uperp=uperp,
+                                        x_values=x_values, k_perp_values=k_perp_values, phi_values=phi_values,
+                                        dtau=dtau, nn=nn)
+
+    #################################################################################
+    # Integrate the distribution to find the expected number of gluons in this step #
+    #################################################################################
+    # (np.trapezoid handles integration of arbitrary spacing via coordinates)
+    # Note the Jacobian applied to integrate over k_perp and phi as opposed to kx and ky.
+    # Integrate over x with trapezoidal method
+    integrand_x = np.trapezoid(k_perp_grid * dtau_rad_dist, x_values, axis=2)  # shape: (n_k_perp, n_phi)
+
+    # Integrate over phi via exact uniform Riemann sum (periodic domain,
+    # NOT closed at 2*pi -- trapezoid drops the wrap-around segment).
+    # This is exact for a truncated Fourier series in cos(phi), cos(2*phi) (our NN output)
+    # as long as num_phi_points is not a multiple of 2 (any N > 2 here is fine).
+    dphi = 2 * np.pi / num_phi_points
+    integrand_x_phi = dphi * np.sum(integrand_x, axis=1)  # shape: (n_k_perp,)
+
+    # Integrate over k_perp (trapezoid appropriate -- non-periodic, linear spacing)
+    Ng = np.trapezoid(integrand_x_phi, k_perp_values, axis=0)  # scalar
+
+    ##############################################################################################
+    # Sample the distribution for a gluon emission coordinate based on this step's distribution. #
+    ##############################################################################################
+    if Ng > 0.0:
+        k = sample_rad_dist(dtau_rad_dist, N_samples=1,
+                            k_perp_values=k_perp_values, phi_values=phi_values,
+                            x_values=x_values, mu=mu, E=E)
+    else:
+        k = np.array([np.nan, np.nan, np.nan])
+
+    # Return your hard earned values, with warnings if something went wrong with the sampling.
+    if Ng == 0:
+        pass
+    elif np.amax(np.isnan(k)):
+        logging.warning("Nans in emission momentum!")
+        logging.warning(k)
+    elif k[2] < 0:
+        logging.warning("Backward gluon emission!!!")
+    return Ng, k
+
+
 def aniso_nn(particle: hard_particles.Particle, plasma_object: plasma.plasma, dtau: float, nn):
     """
     Use a Neural Network emulator to compute the radiation spectrum for this particle in this macrostep.
 
-    Perform a simplified Ogatta thinning, assuming a constant rate between emissions (within this step).
+    Perform a simplified Ogata thinning, assuming a constant rate between emissions (within this step).
 
     Then, sample the kinematics of the emitted particles from the distribution.
-    """
-    # Hard coded options
-    fix_rate = False  # Whether or not to replace the integral of the radiation spectrum with the analytic estimate.
 
-    # Compute radiation kinematic bounds -- see https://arxiv.org/abs/nucl-th/0112071
+    Params:
+        particle: hard_particles.Particle
+            The particle to compute emissions for.
+        plasma_object: plasma.plasma
+            The surrounding plasma environment.
+        dtau: float
+            Macrostep size for evolution in proper time.
+        nn: Any
+            The neural network model for radiation spectrum computation.
+
+    Returns:
+        list: Emitted particle momenta for the macrostep.
+    """
+    # Check if we should compute the radiation at all
     point = particle.coords
     temp = plasma_object.temp(point).item()
-    mu = mu_DeBye(temp)
-    x_min = mu / (2 * particle.E)
-    x_max = 1 - x_min
+    if temp == np.nan:  # Cancel evolution if we exit the plasma space
+        raise NoMedium()
+    elif temp < config.jet.T_HRG:  # Cancel evolution if we exit the plasma phase
+        raise HadronGas()
 
-    # Create bins of kz
-    x_min_pow = np.log10(x_min)  # minimum power of 10 in x to compute
-    x_max_pow = np.log10(x_max)  # maximum power of 10 in x to compute
-    num_k_points = 20  # number of log-spaced points in kz to compute
-    x_values = np.logspace(x_min_pow, x_max_pow, num_k_points // 2)
-    k_z_pos_values = x_values * particle.E
-    k_z_values = k_z_pos_values  # no need for negative kz now!
-
-    # Create bins in k_perp
-    # Note: maximum of ((Min[x^2, x(1-x)] * 4 * E_0^2) - mu^2) --> E_0^2 - mu^2
-    # Added a factor of 0.25, because everything else is expensive numerically small probabilities
-    # !!!!!!!!!!!!! Revisit this later !!!!!!!!!!!!!
-    num_k_perp_points = 25  # num or (num - 1) of points in kx & ky to compute -- 0 added
-    k_perp_pos_values = np.linspace(0, 0.25 * np.sqrt(particle.E ** 2 - mu ** 2),
-                                    num_k_perp_points // 2)
-    k_perp_values = np.concatenate((-np.flip(k_perp_pos_values[1:]), k_perp_pos_values))
-
-    _, _, x_grid = np.meshgrid(k_perp_values, k_perp_values, x_values, indexing='ij')
-
+    # Storage array for emissions
     emission_momenta = []
 
     # Create a subdivision counter to march through this step, sampling the position of the next emission based on the
@@ -868,30 +869,25 @@ def aniso_nn(particle: hard_particles.Particle, plasma_object: plasma.plasma, dt
     total_kz = 0
     particle_p_norm = np.linalg.norm(particle.p3)
     while total_kz < particle_p_norm - config.jet.EMIN:
-        # Compute radiation distribution from this macrostep -- returned in (k_perp, phi, x) in parton frame
-        dtau_rad_dist = aniso_rad_dist(particle=particle, medium=plasma_object, dtau=dtau,
-                                       kx_values=k_perp_values,
-                                       ky_values=k_perp_values,
-                                       kz_values=k_z_values, nn=nn)
+        # Compute radiation distribution from this macrostep, integrated number of expected gluons, and a sampled k
+        # distribution returned in (k_perp, phi, x) in parton frame,
+        Ng, k = aniso_nn_rate_and_k(particle=particle, medium=plasma_object, dtau=dtau, nn=nn)
 
-        # Compute integrals of complete radiation distribution
-        # (np.trapezoid handles integration of arbitrary spacing via coordinates)
-        total_number = np.trapezoid(
-            np.trapezoid(
-                np.trapezoid(dtau_rad_dist, k_z_values, axis=2),  # Integrate over kz -> shape: (n_kx, n_ky)
-                k_perp_values, axis=1),  # Integrate over ky -> shape: (n_kx)
-            k_perp_values, axis=0)  # Integrate over kx -> scalar
+        # If Ng invalid or zero, break
+        if Ng == 0:
+            break
+        elif np.isnan(Ng):
+            logging.warning(f"NaN expected number of emissions: {Ng}")
+            break
+        elif Ng < 0.0:
+            logging.warning(f"Negative expected number of emissions: {Ng}")
+            break
 
         # Approximate radiation rate
-        if fix_rate:
-            rate = N_gluons(particle=particle, medium=plasma_object, dtau=dtau) / dtau
-        else:
-            rate = total_number / dtau
-            if rate < 0:
-                rate = 0.000000001  # small
-            # logging.debug(f"Ratio over analytic: {rate / (N_gluons(particle=particle, medium=plasma_object, dtau=dtau) / dtau)}")
+        rate = Ng / dtau
+        # logging.debug(f"Ratio over analytic: {rate / (N_gluons(particle=particle, medium=plasma_object, dtau=dtau) / dtau)}")
 
-        # Ogata-thinning style sample for next emission position -- no thinning for constant known rate
+        # Survival probability style sample for next emission position -- no thinning for constant known rate
         tau_to_emit = rng.exponential(1.0 / rate)
         next_tau = tau + tau_to_emit
 
@@ -899,14 +895,7 @@ def aniso_nn(particle: hard_particles.Particle, plasma_object: plasma.plasma, dt
         if next_tau > tau_f:
             break
 
-        # Otherwise, accept the emission & sample the distribution for emission kinematics in the radiation frame
-        k = sample_rad_dist(dtau_rad_dist, N_samples=1,
-                            kx_values=k_perp_values, ky_values=k_perp_values,
-                            kz_values=k_z_values, mu=mu, E=particle.E)
-        if k is None:
-            logging.warning("Gluon kinematics rejected. Skipping emissions.")
-            tau = next_tau
-            continue
+        # Otherwise, accept the emission
         logging.debug(f"Emitting gluon! Radiation frame momentum:")
 
         # If we rescale energies, do it!
