@@ -862,11 +862,13 @@ def aniso_nn(particle: hard_particles.Particle, plasma_object: plasma.plasma, dt
 
     # Create a subdivision counter to march through this step, sampling the position of the next emission based on the
     # radiation rate. Exit when we either finish the step or the particle reaches our desired medium scale.
-    tau = particle.tau
+    tau_0 = particle.tau
+    tau_f = tau_0 + dtau
+    tau = tau_0
     total_kz = 0
     particle_p_norm = np.linalg.norm(particle.p3)
-    while tau < tau + dtau and total_kz < particle_p_norm - config.jet.EMIN:
-        # Compute radiation distribution from this macrostep -- returned in (kx, ky, kz) in parton frame
+    while total_kz < particle_p_norm - config.jet.EMIN:
+        # Compute radiation distribution from this macrostep -- returned in (k_perp, phi, x) in parton frame
         dtau_rad_dist = aniso_rad_dist(particle=particle, medium=plasma_object, dtau=dtau,
                                        kx_values=k_perp_values,
                                        ky_values=k_perp_values,
@@ -889,12 +891,12 @@ def aniso_nn(particle: hard_particles.Particle, plasma_object: plasma.plasma, dt
                 rate = 0.000000001  # small
             # logging.debug(f"Ratio over analytic: {rate / (N_gluons(particle=particle, medium=plasma_object, dtau=dtau) / dtau)}")
 
-        # Ogatta-thinning style sample for next emission position
+        # Ogata-thinning style sample for next emission position -- no thinning for constant known rate
         tau_to_emit = rng.exponential(1.0 / rate)
         next_tau = tau + tau_to_emit
 
         # If the next emission lies outside this macro timestep, break and stop emitting in this step
-        if next_tau > tau + dtau:
+        if next_tau > tau_f:
             break
 
         # Otherwise, accept the emission & sample the distribution for emission kinematics in the radiation frame
