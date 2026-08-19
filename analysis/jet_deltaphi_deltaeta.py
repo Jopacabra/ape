@@ -28,8 +28,8 @@ def suppress_fd_output():
 # ---------------------------------------------------------------------------
 # Settings
 # ---------------------------------------------------------------------------
-hepmc_dir = "../results_saved/0_10_avg_AuAu_post_finkin_fix/hepmc/"
-label = "0-10%"
+hepmc_dir = "../results/hepmc/"
+label = "30-40%"
 
 # Jet-finder parameters
 R = 1.0
