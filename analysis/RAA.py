@@ -16,9 +16,10 @@ import observables
 plot_data = True
 
 # results subdirectory for HepMC files
-hepmc_dir = f"../results_saved/0_10_avg_AuAu_post_finkin_fix/hepmc/"
+hepmc_dir = "../results/hepmc/"  #"../results_saved/30_40_avg_AuAu_ogatta_1_200GeV_gammajets/hepmc/"
 # hepmc_dir = f"../results/hepmc/"
-label = "APE 0-10%"
+label = "APE 30-40%"
+max_files = 20000
 
 # Statistics settings
 n_bootstrap_samples = 1000
@@ -26,10 +27,10 @@ n_bootstrap_samples = 1000
 # Particle cuts
 pids = [211]
 pTmin_RAA = 1.0  # Anything below here is liable to be junk both theoretically and computationally.
-pTmax_RAA = 12.0
+pTmax_RAA = 16.0
 rapmin_RAA = 0.0
 rapmax_RAA = 1000
-num_pt_bins = 4
+num_pt_bins = 3
 pT_bins = np.linspace(pTmin_RAA, pTmax_RAA, num_pt_bins+1)
 
 # Storage for results (much smaller than raw data)
@@ -103,10 +104,10 @@ for case in ["v", "m"]:
 
     weighted_counts_batch = []
     event_count = 0
+    weight_sum = 0.0
     n_failed = 0
 
     num_files = len(hepmc_files)
-    max_files = 10000
     print(f"Number of {case} files: {num_files}")
     if max_files < num_files:
         print(f"Limiting to {max_files} files!")
@@ -129,26 +130,28 @@ for case in ["v", "m"]:
 
             weighted_counts_batch.append((N_counts * weight).astype(np.float32))
             event_count += 1
+            weight_sum += weight
 
-            # Process batch
-            if event_count % batch_size == 0:
-                if case == "v":
-                    bootstrap_samples_pp.append(np.array(weighted_counts_batch, dtype=np.float32))
-                else:
-                    bootstrap_samples_aa.append(np.array(weighted_counts_batch, dtype=np.float32))
-                weighted_counts_batch = []
-
+            # # Process batch
+            # if event_count % batch_size == 0:
+            #     if case == "v":
+            #         bootstrap_samples_pp.append(np.array(weighted_counts_batch, dtype=np.float32))
+            #     else:
+            #         bootstrap_samples_aa.append(np.array(weighted_counts_batch, dtype=np.float32))
+            #     weighted_counts_batch = []
+            #
             del event
 
         except IsADirectoryError:
             continue
 
     # Handle remaining events
-    if weighted_counts_batch:
-        if case == "v":
-            bootstrap_samples_pp.append(np.array(weighted_counts_batch, dtype=np.float32))
-        else:
-            bootstrap_samples_aa.append(np.array(weighted_counts_batch, dtype=np.float32))
+    # if weighted_counts_batch:
+    weighted_counts_batch = np.array(weighted_counts_batch, dtype=np.float32)
+    if case == "v":
+        bootstrap_samples_pp.append(np.array(weighted_counts_batch/weight_sum, dtype=np.float32))
+    else:
+        bootstrap_samples_aa.append(np.array(weighted_counts_batch/weight_sum, dtype=np.float32))
 
     print(f"{n_failed} failed {case} events")
 

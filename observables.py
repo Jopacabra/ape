@@ -727,13 +727,11 @@ def signed_deflection(jet1: fastjet.PseudoJet=None, jet2: fastjet.PseudoJet=None
 def hepmc_N(hepmc_event: pyhepmc.GenEvent,
             rap_min: float=0.0, rap_max: float=1.5,
             pTmin: float=0.0, pTmax: float=100.0, pT_bins: np.ndarray=None,
-            include=None, exclude=None):
+            include=[211], exclude=None):
     """
     Function to compute multiplicity as a function of pT for a HepMC event
     """
     # Access numpy interface of event object
-    if include is None:
-        include = [211]
     particles = hepmc_event.numpy.particles
 
     # Compute filter quantities
@@ -741,7 +739,6 @@ def hepmc_N(hepmc_event: pyhepmc.GenEvent,
     px = particles.px
     py = particles.py
     pz = particles.pz
-    denom = E - pz
     with np.errstate(divide='ignore', invalid='ignore', over='ignore'):
         # Protect denominator first
         denominator = np.where(E > pz, E - pz, np.finfo(float).tiny)
