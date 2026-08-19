@@ -32,7 +32,7 @@ def weighted_mean(acos, weights):
     return np.nansum(acos * weights) / np.nansum(weights)
 
 
-def compute_bin_vals(acos, weights, bin_edges, bin_in_jet_x, analyzed_x=None, delta_phi=1):
+def compute_bin_vals(acos, weights, bin_edges, bin_in_jet_x, analyzed_x=None):
     """Compute the array of per-bin values (weighted sum or weighted mean)."""
     vals = []
     for j, bin_lo in enumerate(bin_edges[:-1]):
@@ -45,7 +45,7 @@ def compute_bin_vals(acos, weights, bin_edges, bin_in_jet_x, analyzed_x=None, de
         else:
             cut = (acos > bin_lo) & (acos <= bin_hi)
             w = weights[cut]
-            val = np.nansum(w) / (np.nansum(weights) * delta_phi)
+            val = np.nansum(w)
         vals.append(val)
     return np.array(vals)
 
@@ -76,8 +76,8 @@ def bootstrap_ratio_or_diff(
     n_m = len(m_acos)
     n_v = len(v_acos)
 
-    central_m = compute_bin_vals(m_acos, m_weights, bin_edges, bin_in_jet_x, m_x, delta_phi=delta_phi)
-    central_v = compute_bin_vals(v_acos, v_weights, bin_edges, bin_in_jet_x, v_x, delta_phi=delta_phi)
+    central_m = compute_bin_vals(m_acos, m_weights, bin_edges, bin_in_jet_x, m_x)
+    central_v = compute_bin_vals(v_acos, v_weights, bin_edges, bin_in_jet_x, v_x)
 
     if mode == "ratio":
         central = central_m / central_v
@@ -97,8 +97,8 @@ def bootstrap_ratio_or_diff(
         bv_weights = v_weights[idx_v]
         bv_x       = v_x[idx_v] if v_x is not None else None
 
-        bm_vals = compute_bin_vals(bm_acos, bm_weights, bin_edges, bin_in_jet_x, bm_x, delta_phi=delta_phi)
-        bv_vals = compute_bin_vals(bv_acos, bv_weights, bin_edges, bin_in_jet_x, bv_x, delta_phi=delta_phi)
+        bm_vals = compute_bin_vals(bm_acos, bm_weights, bin_edges, bin_in_jet_x, bm_x)
+        bv_vals = compute_bin_vals(bv_acos, bv_weights, bin_edges, bin_in_jet_x, bv_x)
 
         if mode == "ratio":
             boot_stats[i] = bm_vals / bv_vals
@@ -112,7 +112,7 @@ def bootstrap_ratio_or_diff(
 # --- Configuration ---
 
 # Results subdirectory for HepMC files
-hepmc_dir = "../results_saved/30_40_avg_AuAu_post_finkin_fix/hepmc/"
+hepmc_dir = "../results/hepmc/" # "../results_saved/30_40_avg_AuAu_post_finkin_fix/hepmc/"
 label = "30-40%"
 
 # Statistics settings
@@ -135,8 +135,8 @@ fence_y = True
 # Acoplanarity (delta-j) binning
 aco_min = -0.5
 aco_max = +0.5
-num_aco_bins = 30
-aco_bins = np.linspace(aco_min, aco_max, num_aco_bins)
+num_aco_bins = 13
+aco_bins = np.linspace(aco_min, aco_max, num_aco_bins+1)
 delta_phi = aco_bins[1] - aco_bins[0]
 
 # jet_x binning:
@@ -149,9 +149,10 @@ num_jet_x_bins = 10
 jet_x_bins = np.linspace(jet_x_min, jet_x_max, num_jet_x_bins)
 
 # Observables settings
+event_type = "dijet"
 deflection_dir = "phi"  # Direction for signed deflection computation
 pt_weighting = 0        # Weight each particle's phase by p_T^(pt_weighting)
-plot_group = "both"    # "ratio", "diff", "both", "m", or "v"
+plot_group = "diff"    # "ratio", "diff", "both", "m", or "v"
 
 # Plot x-axis range (used only when bin_in_jet_x = False)
 xmin = -0.5
@@ -173,7 +174,7 @@ bin_vals_aco,   bin_errs_aco   = [], []
 v_bin_vals_aco, v_bin_errs_aco = [], []
 
 # --- Main loop ---
-
+escheme_def = fastjet.JetDefinition(fastjet.antikt_algorithm, R, fastjet.E_scheme)
 for case in ["v", "m"]:
 
     case_dir = hepmc_dir + case + "/"
@@ -206,17 +207,33 @@ for case in ["v", "m"]:
 
             # --- Jet finding ---
             try:
-                gamma, WTA_jet = observables.hepmc_to_fastjet_gamma_jet_pairs(
-                    hepmc_event=event,
-                    R=R,
-                    rap_min=rap_min_jet_finder,
-                    rap_max=rap_max_jet_finder,
-                    pTmin=pTmin_jet_finder,
-                    scheme=fastjet.WTA_pt_scheme,
-                )
+                if event_type == "gammajet":
+                    gamma, WTA_jet = observables.hepmc_to_fastjet_gamma_jet_pairs(
+                        hepmc_event=event,
+                        R=R,
+                        rap_min=rap_min_jet_finder,
+                        rap_max=rap_max_jet_finder,
+                        pTmin=pTmin_jet_finder,
+                        scheme=fastjet.WTA_pt_scheme,
+                    )
+                    jets = [WTA_jet]
+                elif event_type == "dijet":
+                    jets = observables.hepmc_to_fastjet(
+                        hepmc_event=event,
+                        R=R,
+                        rap_min=rap_min_jet_finder,
+                        rap_max=rap_max_jet_finder,
+                        pTmin=pTmin_jet_finder,
+                        scheme=fastjet.WTA_pt_scheme,
+                    )
+
+            except Exception:
+                n_failed += 1
+                continue
+
+            for WTA_jet in jets:
 
                 # Recluster with E-scheme to get axis
-                escheme_def = fastjet.JetDefinition(fastjet.antikt_algorithm, R, fastjet.E_scheme)
                 try:
                     new_jets = escheme_def(WTA_jet.constituents())
                     if len(new_jets) > 1:
@@ -227,61 +244,60 @@ for case in ["v", "m"]:
                     # WTA_jet has no constituents — it is a single-particle jet
                     ES_jet = WTA_jet
 
-            except Exception:
-                n_failed += 1
-                continue
+                if WTA_jet is None:
+                    n_no_pair += 1
+                    continue
 
-            if WTA_jet is None:
-                n_no_pair += 1
-                continue
+                # --- Jet cuts ---
+                jet_pt = WTA_jet.pt()
+                if jet_pt < jet_minpt:
+                    n_too_small_pt += 1
+                    continue
+                elif jet_pt > jet_maxpt:
+                    n_too_large_pt += 1
+                    continue
 
-            # --- Jet cuts ---
-            jet_pt = WTA_jet.pt()
-            if jet_pt < jet_minpt:
-                n_too_small_pt += 1
-                continue
-            elif jet_pt > jet_maxpt:
-                n_too_large_pt += 1
-                continue
+                jet_p   = np.array([WTA_jet.px(), WTA_jet.py(), WTA_jet.pz()])
+                jet_phi = np.arctan2(jet_p[1], jet_p[0])
+                if np.mod(jet_phi, np.pi / 2) < phi_fence_jet_axis / 2:
+                    n_too_small_phi += 1
+                    continue
+                elif fence_y and np.mod(jet_phi, np.pi / 2) > (np.pi / 2 - phi_fence_jet_axis / 2):
+                    n_too_large_phi += 1
+                    continue
 
-            jet_p   = np.array([WTA_jet.px(), WTA_jet.py(), WTA_jet.pz()])
-            jet_phi = np.arctan2(jet_p[1], jet_p[0])
-            if np.mod(jet_phi, np.pi / 2) < phi_fence_jet_axis / 2:
-                n_too_small_phi += 1
-                continue
-            elif fence_y and np.mod(jet_phi, np.pi / 2) > (np.pi / 2 - phi_fence_jet_axis / 2):
-                n_too_large_phi += 1
-                continue
+                jet_rap = WTA_jet.eta()
+                if abs(jet_rap) < rap_min_jet_axis:
+                    n_too_small_rap += 1
+                    continue
+                elif abs(jet_rap) > rap_max_jet_axis:
+                    n_too_large_rap += 1
+                    continue
 
-            jet_rap = WTA_jet.eta()
-            if abs(jet_rap) < rap_min_jet_axis:
-                n_too_small_rap += 1
-                continue
-            elif abs(jet_rap) > rap_max_jet_axis:
-                n_too_large_rap += 1
-                continue
+                # --- Accepted jet ---
+                if event_type == "gammajet":
+                    jet_x  = WTA_jet.pt() / gamma.pt()
+                else:
+                    jet_x = np.nan
+                weight = event.weight("pythia")
 
-            # --- Accepted jet ---
-            jet_x  = WTA_jet.pt() / gamma.pt()
-            weight = event.weight("pythia")
+                analyzed_WTA_jets.append(WTA_jet)
+                analyzed_ES_jets.append(ES_jet)
+                analyzed_WTA_jet_pts.append(jet_pt)
+                analyzed_ES_jet_pts.append(ES_jet.pt())
+                analyzed_x.append(jet_x)
+                analyzed_weights.append(weight)
 
-            analyzed_WTA_jets.append(WTA_jet)
-            analyzed_ES_jets.append(ES_jet)
-            analyzed_WTA_jet_pts.append(jet_pt)
-            analyzed_ES_jet_pts.append(ES_jet.pt())
-            analyzed_x.append(jet_x)
-            analyzed_weights.append(weight)
-
-            if case == "v":
-                v_jet_pts.append(jet_pt)
-                v_jet_phis.append(jet_phi)
-                v_jet_ys.append(jet_rap)
-                v_jet_xs.append(jet_x)
-            else:
-                m_jet_pts.append(jet_pt)
-                m_jet_phis.append(jet_phi)
-                m_jet_ys.append(jet_rap)
-                m_jet_xs.append(jet_x)
+                if case == "v":
+                    v_jet_pts.append(jet_pt)
+                    v_jet_phis.append(jet_phi)
+                    v_jet_ys.append(jet_rap)
+                    v_jet_xs.append(jet_x)
+                else:
+                    m_jet_pts.append(jet_pt)
+                    m_jet_phis.append(jet_phi)
+                    m_jet_ys.append(jet_rap)
+                    m_jet_xs.append(jet_x)
 
         except IsADirectoryError:
             continue
@@ -320,7 +336,7 @@ for case in ["v", "m"]:
     # Store raw per-event data for bootstrap use when plot_group is "ratio" or "diff"
     case_data[case] = {
         "acos":    acos,
-        "weights": analyzed_weights,
+        "weights": analyzed_weights / np.nansum(analyzed_weights * delta_phi),
         "x":       analyzed_x,
     }
 
@@ -357,10 +373,12 @@ for case in ["v", "m"]:
                 bin_errs_aco.append(err)
     else:
         # Bin by aco; compute weighted sum of events per bin (Poisson error)
+        total_w = 0
         for j, bin_lo in enumerate(active_bin_edges[:-1]):
             bin_hi = active_bin_edges[j + 1]
             cut    = (acos > bin_lo) & (acos <= bin_hi)
             w      = analyzed_weights[cut]
+            total_w += np.nansum(w)
 
             val = np.nansum(w)
             err = np.sqrt(np.nansum(w ** 2))
@@ -417,7 +435,7 @@ if plot_group in ("ratio", "diff"):
                   color=colors[flow_i], linewidth=2, label=deflection_dir + r' $\Delta \Delta j$', zorder=3)
         axis.fill_between(bin_centers, derived_vals - derived_errs, derived_vals + derived_errs,
                           color=colors[flow_i], alpha=0.25, zorder=2)
-        axis.set_ylabel(r'Change in Average Signed $\Delta j$ (rad)', fontsize=10)
+        axis.set_ylabel(r'\Delta (1/N)dN/d$\Delta j$', fontsize=10)
 
 elif plot_group == "m":
     axis.plot(bin_centers, bin_vals_aco, marker='o', markersize=7, linestyle='-',
@@ -457,7 +475,9 @@ axis.set_title(
 )
 
 bin_suffix = "xj" if bin_in_jet_x else deflection_dir
-fig.savefig(f"delta_j_{bin_suffix}.png", dpi=150, bbox_inches='tight')
+money_fname = f"delta_j_{bin_suffix}.png"
+fig.savefig(money_fname, dpi=150, bbox_inches='tight')
+print(money_fname)
 
 # --- Diagnostic histograms ---
 for v_data, m_data, xlabel, fname in [
