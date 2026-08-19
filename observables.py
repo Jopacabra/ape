@@ -277,6 +277,8 @@ def hepmc_to_fastjet_gamma_jet_pairs(hepmc_event: pyhepmc.GenEvent, R: float=0.4
         gamma = fastjet.PseudoJet(gamma_mom.px, gamma_mom.py, gamma_mom.pz, gamma_mom.e)  # Make a pseudojet from the gamma GenParticle
         if gamma is None:
             return None, None
+        if math.sqrt(gamma_mom.px**2 + gamma_mom.py**2) < min_gamma_pt:
+            return None, None
 
         # ── 4. Match photon to back-to-back jet ─────────────────
         # Take the leading jet that is back-to-back with the photon
@@ -835,24 +837,24 @@ def hepmc_N_PID(hepmc_event: pyhepmc.GenEvent,
     return results
 
 
-def compute_event_vn(hepmc_event, n, rap_min, rap_max, pTmin, pTmax, pT_bins, include):
+def compute_event_Q_sum(hepmc_event, n, rap_min, rap_max, pTmin, pTmax, pT_bins, include):
     """
     Compute the per-pT-bin Q-vector components for harmonic n from a single
     HepMC event and the Pythia event weight.
+
+    This function is essentially useless for all intents and purposes. Computing the vn at the level
+    of a single event includes a huge host of non-flow v2-type correlations (dijets / gamma-jets).
 
     Returns
     -------
     Qx : ndarray, shape (n_bins,)   sum of cos(n*phi) for particles in each bin
     Qy : ndarray, shape (n_bins,)   sum of sin(n*phi) for particles in each bin
     M  : ndarray, shape (n_bins,)   particle multiplicity in each bin
-    weight : float                  Pythia event weight
     """
     n_bins = len(pT_bins) - 1
     Qx = np.zeros(n_bins, dtype=np.float64)
     Qy = np.zeros(n_bins, dtype=np.float64)
     M  = np.zeros(n_bins, dtype=np.float64)
-
-    weight = hepmc_event.weight("pythia")
 
     for particle in hepmc_event.particles:
         if particle.status != 1:          # final-state only
@@ -882,4 +884,56 @@ def compute_event_vn(hepmc_event, n, rap_min, rap_max, pTmin, pTmax, pT_bins, in
         Qy[ibin] += np.sin(n * phi)
         M[ibin]  += 1.0
 
-    return Qx, Qy, M, weight
+    return Qx, Qy, M
+
+
+def compute_event_Qs(hepmc_event, n, rap_min, rap_max, pTmin, pTmax, pT_bins, include):
+    """
+    Compute the per-particle per-pT-bin Q-vector components for harmonic n from a single
+    HepMC event and the Pythia event weight.
+
+    Returns
+    -------
+    Qx : ndarray, shape (n_bins,)   sum of cos(n*phi) for particles in each bin
+    Qy : ndarray, shape (n_bins,)   sum of sin(n*phi) for particles in each bin
+    M  : ndarray, shape (n_bins,)   particle multiplicity in each bin
+    """
+    n_bins = len(pT_bins) - 1
+    Qx = [[] for _ in range(n_bins)]  # NOTE: use a list comprehension, not `[[]] * n_bins`!
+    Qy = [[] for _ in range(n_bins)]
+    M = [[] for _ in range(n_bins)]
+
+    for particle in hepmc_event.particles:
+        if particle.status != 1:  # final-state only
+            continue
+        pid = particle.pid
+        if include and pid not in include:
+            continue
+
+        mom = particle.momentum
+        pT = np.sqrt(mom.px ** 2 + mom.py ** 2)
+        if pT < pTmin or pT >= pTmax:
+            continue
+
+        # rapidity
+        try:
+            rap = 0.5 * np.log((mom.e + mom.pz) / (mom.e - mom.pz))
+        except (ZeroDivisionError, ValueError):
+            continue
+        if abs(rap) < rap_min or abs(rap) > rap_max:
+            continue
+
+        phi = np.arctan2(mom.py, mom.px)
+        ibin = np.searchsorted(pT_bins[1:], pT)  # bin index
+        ibin = min(ibin, n_bins - 1)
+
+        Qx[ibin].append(np.cos(n * phi))
+        Qy[ibin].append(np.sin(n * phi))
+        M[ibin].append(1.0)
+
+    # Array-ify them
+    Qx = np.array(Qx)
+    Qy = np.array(Qy)
+    M = np.array(M)
+    return Qx, Qy, M
+
