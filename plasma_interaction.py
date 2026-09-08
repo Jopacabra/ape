@@ -15,7 +15,7 @@ from utilities import zeta, perp_vec, rng
 # Get the path of this file and import the radiation NN path
 script_dir = str(Path(__file__).resolve().parent)
 sys.path.append(os.path.join(script_dir, 'flow-rad-nn/'))
-from train_radiation_nn import RadiationEmulatorInference
+from radiation_nn import RadiationEmulatorInference
 
 class HadronGas(Exception):
     """
@@ -85,6 +85,11 @@ def rho(temp, soft_pid=21):
     elif np.abs(soft_pid) < 7:
         NDOF = 6  # 24 / 4  --> per pdg id, instead of for u, ubar, d, dbar together.
         density = 1.202056903159594 * (3/4) * NDOF * (1 / (np.pi ** 2)) * temp ** 3
+    elif soft_pid == "light":
+        NDOF = 24  # for u, ubar, d, dbar together.
+        q_density = 1.202056903159594 * (3 / 4) * NDOF * (1 / (np.pi ** 2)) * temp ** 3
+        g_density = 1.202056903159594 * 16 * (1 / (np.pi ** 2)) * temp ** 3
+        density = q_density + g_density
     else:
         # Return 0
         density = 0
@@ -503,22 +508,23 @@ def aniso_rad_dist(E: float, tau: float, temp: float, uperp: float,
     if uperp > 0.9 or uperp < 0.0:
         logging.warning("Perp. velocity is outside of training domain! Good luck!")
 
-    # Compute number distribution of radiation generated in this step
+    # Compute NN distribution of radiation generated in this step -- still unnormalized at this point
     dtau_rad_dist = nn.compute_dNdxd2k_grid(
         E=E,
         z0=tau / hbarc,  # tau is in fm, need to give to NN in GeV^{-1}
         u_perp=uperp,
-        T=temp,
-        g=config.constants.G,
+        mu=mu_DeBye(T=temp),
         k_perp_values=k_perp_values,
         phi_values=phi_values,
-        x_values=x_values,
-        mu=mu_DeBye(T=temp))  # For kinematic cuts
+        x_values=x_values)
 
     # Perform longitudinal boost to back to lab frame
     """
     For this testing version, we have not yet implemented the longitudinal boost.
     """
+
+    # Multiply by constants, density, and energy to get dN/dxd2k properly normalized, UP TO Casimir factor
+    dtau_rad_dist *= E * rho(temp, soft_pid="all") * (config.constants.G ** 6) / (2 * ((2 * np.pi) ** 3))
 
     return dtau_rad_dist
 
