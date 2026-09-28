@@ -479,7 +479,7 @@ def aniso_rad_delta(particle: hard_particles.Particle, medium: plasma.plasma, k:
 
 
 # Radiation distribution summoner
-def aniso_rad_dist(E: float, tau: float, temp: float, uperp: float,
+def aniso_rad_dist(E: float, tau: float, temp: float, uperp: float, uz: float,
                    x_values: np.ndarray, k_perp_values: np.ndarray, phi_values: np.ndarray,
                    dtau: float, nn=None):
     """
@@ -495,10 +495,12 @@ def aniso_rad_dist(E: float, tau: float, temp: float, uperp: float,
     Right now, we're only incorporating the transverse flow. The calculation was done in the longitudinal rest frame
     of the fluid. We can easily get around this by performing a boost to the longitudinal rest frame of the fluid, then
     simply boosting the resulting distribution back to the lab frame. In truth, there may be gauge invariance problems
-    that are related to this assumption.
+    that are related to this assumption, as well as additional phase features that are neglected.
     
     For this testing version, we have not yet implemented the longitudinal boost.
     """
+    boosted_E = E
+    boosted_x_values = x_values
 
     # Warn if we're outside our training domain
     if (tau + dtau) / hbarc > 50.0:
@@ -510,22 +512,18 @@ def aniso_rad_dist(E: float, tau: float, temp: float, uperp: float,
 
     # Compute NN distribution of radiation generated in this step -- still unnormalized at this point
     dtau_rad_dist = nn.compute_dNdxd2k_grid(
-        E=E,
+        E=boosted_E,
         z0=tau / hbarc,  # tau is in fm, need to give to NN in GeV^{-1}
         u_perp=uperp,
         mu=mu_DeBye(T=temp),
         k_perp_values=k_perp_values,
         phi_values=phi_values,
-        x_values=x_values)
-
-    # Perform longitudinal boost to back to lab frame
-    """
-    For this testing version, we have not yet implemented the longitudinal boost.
-    """
+        x_values=boosted_x_values)
 
     # Multiply by constants, density, and energy to get dN/dxd2k properly normalized, UP TO Casimir factor
     dtau_rad_dist *= E * rho(temp, soft_pid="all") * (config.constants.G ** 6) / (2 * ((2 * np.pi) ** 3))
 
+    # Correlated to the original x_values, this is the distribution in the frame with nonzero longitudinal velocity
     return dtau_rad_dist
 
 
