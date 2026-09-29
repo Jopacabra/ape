@@ -1,7 +1,7 @@
 import numpy as np
 import matplotlib.lines as mlines
 import matplotlib.colors as mcolors
-import matplotlib.cm as mcm
+from matplotlib import colormaps as mcm
 import matplotlib.patches as mpatches
 import pythia8
 from matplotlib import pyplot as plt
@@ -262,7 +262,7 @@ def plot_parton_hadron(hard_event: hard_particles.EventRecord, hadrons: pythia8.
                 temp_max = plasma_object.max_temp()
 
                 # Build a "plasma" colormap that maps masked (cold) cells to white
-                base_cmap = mcm.get_cmap("plasma").copy()
+                base_cmap = mcm["plasma"].copy()
                 base_cmap.set_bad(color="white")
 
                 temp_masked = np.ma.array(temp_vals, mask=cold_mask)
@@ -310,7 +310,7 @@ def plot_parton_hadron(hard_event: hard_particles.EventRecord, hadrons: pythia8.
                 vy_vals = np.where(cold_mask_v, np.nan, vy_vals)
                 vmag = np.where(cold_mask_v, np.nan, vmag)
 
-                flow_cmap = mcm.get_cmap("cool").copy()
+                flow_cmap = mcm["cool"].copy()
                 flow_cmap.set_bad(color="white")
 
                 qv = axis.quiver(
