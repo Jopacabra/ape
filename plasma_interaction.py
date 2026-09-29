@@ -599,10 +599,10 @@ def N_gluons(particle: hard_particles.Particle, medium: plasma.plasma, dtau: flo
     This function returns the analytically computed number of emitted gluons at first order in opacity with infinite
     kinematic bounds, as in https://arxiv.org/pdf/nucl-th/0012092 Eq. 7
 
-    We take the opposite limit as they do to arrive at Eq. 9, assuming small $x << x_c = (L \mu^2 / (2 E))$.
-    Then, we can apply a factor of (1/(xE)) and integrate over x from $x_{min} = \mu/E$ to $x_{max} = x_c$. We need
-    a minimum value of x here because, while $dI/dx \propto \log(1/x)$ is integrable to zero,
-    $dN/dx \propto \log(1/x)/x$ is not.
+    We take the opposite limit as they do to arrive at Eq. 9, assuming small x << x_c = (L mu^2 / (2 E)).
+    Then, we can apply a factor of (1/(xE)) and integrate over x from x_{min} = mu/E to x_{max} = x_c. We need
+    a minimum value of x here because, while dI/dx propto log(1/x) is integrable to zero,
+    dN/dx propto log(1/x)/x is not.
     """
     # Gather particle and medium properties.
     HBARC = 0.197327  # GeV·fm
