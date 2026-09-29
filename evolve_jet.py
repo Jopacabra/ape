@@ -330,13 +330,12 @@ def _worker_init(child_seeds, worker_counter, worker_counter_lock, log_queue, me
         script_dir = str(Path(__file__).resolve().parent)
         flow_rad_nn_dir = os.path.join(script_dir, 'flow-rad-nn/')
         sys.path.append(flow_rad_nn_dir)
-        from train_radiation_nn import RadiationEmulatorInference
+        from radiation_nn import RadiationEmulatorInference
 
         # Load radiation neural network -- O(0.01s)
         logging.debug("Loading radiation neural network...")
         _nn = RadiationEmulatorInference(
             model_file=os.path.join(flow_rad_nn_dir, "data/radiation_emulator.pt"),
-            normalization_file=os.path.join(flow_rad_nn_dir, "data/radiation_normalization.json"),
             device='cpu',
             compile=False,
             quiet=True,
