@@ -109,7 +109,7 @@ class Particle:
     tau_em: float = field(init=False)
 
     # per-step state history (each entry is (tau, x, y, etas, px, py, pz))
-    history: list[tuple[float, float, float, float, float, float, float]] = field(
+    history: list[tuple[float, float, float, float, float, float, float, float]] = field(
         default_factory=list,
         init=False,
         repr=False,
@@ -193,6 +193,7 @@ class Particle:
                 float(self.px),
                 float(self.py),
                 float(self.pz),
+                float(self.tau_em),
             )
         )
 
