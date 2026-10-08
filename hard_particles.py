@@ -106,6 +106,7 @@ class Particle:
     m: float | None = field(init=False)
     m0: float = field(init=False)  # Pythia m0 mass, e.g. constituent quark mass
     name: str = field(init=False)
+    tau_em: float = field(init=False)
 
     # per-step state history (each entry is (tau, x, y, etas, px, py, pz))
     history: list[tuple[float, float, float, float, float, float, float]] = field(
@@ -165,6 +166,9 @@ class Particle:
         self.px_0 = float(self.px)
         self.py_0 = float(self.py)
         self.pz_0 = float(self.pz)
+
+        # Set "time of last emission" to tau0
+        self.tau_em = float(self.tau_0)
 
         # initialize history with the initial state
         self._log_state()

@@ -719,7 +719,7 @@ def sample_rad_dist(rad_dist, k_perp_values, phi_values, x_values, N_samples=1, 
 
 
 # Function to return the current emission rate and a sampled emission
-def aniso_nn_rate_and_k(particle: hard_particles.Particle, medium: plasma.plasma, dtau: float, nn=None):
+def aniso_nn_rate_and_k(particle: hard_particles.Particle, medium: plasma.plasma, tau: float, dtau: float, nn=None):
     """
     Compute the radiation number distribution and using a neural network model, then
 
@@ -750,7 +750,6 @@ def aniso_nn_rate_and_k(particle: hard_particles.Particle, medium: plasma.plasma
         raise Exception
     p = particle.p3
     E = np.linalg.norm(p) # Feed massless energy, since using massless derivation
-    tau = particle.tau
     point = particle.coords
     temp = medium.temp(point).item()
     mu = mu_DeBye(temp)
@@ -879,15 +878,23 @@ def aniso_nn(particle: hard_particles.Particle, plasma_object: plasma.plasma, dt
     while total_kz < particle_p_norm - config.jet.EMIN:
         # Compute radiation distribution from this macrostep, integrated number of expected gluons, and a sampled k
         # distribution returned in (k_perp, phi, x) in parton frame,
-        Ng, k = aniso_nn_rate_and_k(particle=particle, medium=plasma_object, dtau=dtau, nn=nn)
+        tau_since_em = tau - particle.tau_em
+        Ng, k = aniso_nn_rate_and_k(particle=particle, medium=plasma_object, tau=tau_since_em, dtau=dtau, nn=nn)
 
         # If Ng invalid or zero, break
-        if Ng == 0:
+        if Ng == 0:  # Rare case caused by net cancellation of positive and negative intensities
             break
-        elif np.isnan(Ng):
+        elif np.isnan(Ng):  # Reflects a numerical error
             logging.warning(f"NaN expected number of emissions: {Ng}")
             break
-        elif Ng < 0.0:
+        elif Ng < 0.0:  # Negative intensities overwhelm the positive intensities... Poorly handled by quitting.
+            """
+            It is important to note that this case means something -- by quitting here we have included some
+            "suppression" by simply not allowing an emission for the rest of this macrostep. However, we are throwing
+            away the shape and magnitude of the suppression of the vacuum radiation.
+
+            Negative values in the spectra are not treated well by layering them on top of a complete vacuum shower.
+            """
             logging.warning(f"Negative expected number of emissions: {Ng}")
             break
 
@@ -904,6 +911,7 @@ def aniso_nn(particle: hard_particles.Particle, plasma_object: plasma.plasma, dt
             break
 
         # Otherwise, accept the emission
+        particle.tau_em = next_tau  # Set time of last emission to this emission time!
         logging.debug(f"Emitting gluon! Radiation frame momentum:")
 
         # If we rescale energies, do it!
