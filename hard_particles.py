@@ -106,10 +106,20 @@ class Particle:
     m: float | None = field(init=False)
     m0: float = field(init=False)  # Pythia m0 mass, e.g. constituent quark mass
     name: str = field(init=False)
+
+    # Emission info
     tau_em: float = field(init=False)
 
-    # per-step state history (each entry is (tau, x, y, etas, px, py, pz))
-    history: list[tuple[float, float, float, float, float, float, float, float]] = field(
+    # per-step state history (each entry is (tau, x, y, etas, px, py, pz, tau_em))
+    history: list[tuple[float, float, float, float, float, float, float,
+    float]] = field(
+        default_factory=list,
+        init=False,
+        repr=False,
+    )
+
+    # Medium exposure memory (each entry is (tau, mu, uperp, upar))
+    memory: list[tuple[float, float, float, float]] = field(
         default_factory=list,
         init=False,
         repr=False,
@@ -194,6 +204,17 @@ class Particle:
                 float(self.py),
                 float(self.pz),
                 float(self.tau_em),
+            )
+        )
+
+    def _log_memory(self, mu, uperp, upar) -> None:
+        """Append current medium exposure to `memory`."""
+        self.memory.append(
+            (
+                float(self.tau),
+                float(mu),
+                float(uperp),
+                float(upar),
             )
         )
 
@@ -314,7 +335,7 @@ class Particle:
     # Freestreaming evolution #
     ###########################
 
-    def prop(self, dtau: float = 0.0) -> None:
+    def prop(self, dtau: float = 0.0, mu: float = np.nan, uperp: float = np.nan, upar: float = np.nan) -> None:
         """
         Free-streaming update in Milne coordinates.
         """
@@ -344,6 +365,9 @@ class Particle:
 
         # Log state to history
         self._log_state()
+
+        # Optionally log medium exposure to memory
+        self._log_memory(mu=mu, uperp=uperp, upar=upar)
 
     #############
     # Utilities #

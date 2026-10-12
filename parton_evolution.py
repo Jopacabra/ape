@@ -126,7 +126,7 @@ def evolve_particle(particle : hard_particles.Particle, plasma_object : plasma.p
                     break
 
                 rad_dt = time.time() - rad_t0
-                # logging.debug(f"Radiation computed in {rad_dt}s")
+                # logging.info(f"Radiation computed in {rad_dt}s")
 
                 ###############
                 # Collisional #
@@ -162,8 +162,18 @@ def evolve_particle(particle : hard_particles.Particle, plasma_object : plasma.p
                 # Propagate particle  #
                 #######################
 
+                # Compute medium info for memory
+                point = particle.coords
+                p = particle.p3
+                temp = plasma_object.temp(point).item()
+                mu = plasma_interaction.mu_DeBye(T=temp)
+                u = np.array([float(plasma_object.x_vel(point).item()), float(plasma_object.y_vel(point).item()),
+                              float(plasma_object.z_vel(point).item())])
+                uperp_mag = np.linalg.norm(utilities.perp_vec(a=u, b=p))
+                upar_mag = np.linalg.norm(utilities.par_vec(a=u, b=p))
+
                 # Step forward with original momentum
-                particle.prop(dtau=dtau)
+                particle.prop(dtau=dtau, mu=mu, uperp=uperp_mag, upar=upar_mag)
                 steps_complete += 1  # Mark step as complete -- particle has moved forward
 
                 # Add interaction momentum
