@@ -53,10 +53,46 @@ try:
 except ImportError:
     print('NO MATPLOTLIB')
 
+##############################
+# Equation of State Business #
+##############################
 
-# ---------------------------------------------------------------------------
-# Internal helpers
-# ---------------------------------------------------------------------------
+# Function to return partial density at a particular point for given medium partons
+# Chosen to be ideal gluon gas dens. as per Sievert, Yoon, et. al.
+def rho(temp, soft_pid=21):
+    if soft_pid == 21:
+        density = 1.202056903159594 * 16 * (1 / (np.pi ** 2)) * temp ** 3
+    elif np.abs(soft_pid) < 7:
+        NDOF = 6  # 24 / 4  --> per pdg id, instead of for u, ubar, d, dbar together.
+        density = 1.202056903159594 * (3/4) * NDOF * (1 / (np.pi ** 2)) * temp ** 3
+    elif soft_pid == 0:  # Use all light quarks, plus gluons
+        NDOF = 24  # for u, ubar, d, dbar together.
+        q_density = 1.202056903159594 * (3 / 4) * NDOF * (1 / (np.pi ** 2)) * temp ** 3
+        g_density = 1.202056903159594 * 16 * (1 / (np.pi ** 2)) * temp ** 3
+        density = q_density + g_density
+    else:
+        # Return 0
+        density = 0
+    return density
+
+
+# Function to return gradient of partial density at a particular point for given medium partons
+# Chosen to be ideal gluon gas dens. as per Sievert, Yoon, et. al.
+def gradrho(temp, gradtemp, soft_pid=21):
+    if soft_pid == 21:
+        graddensity = 1.202056903159594 * 16 * (1 / (np.pi ** 2)) * 3 * (temp ** 2) * gradtemp
+    elif np.abs(soft_pid) < 7:
+        NDOF = 6  # 24 / 4  --> per pdg id, instead of for u, ubar, d, dbar together.
+        graddensity = 1.202056903159594 * (3/4) * NDOF * (1 / (np.pi ** 2)) * 3 * (temp ** 2) * gradtemp
+    else:
+        # Return 0
+        graddensity = 0
+    return graddensity
+
+
+#########################
+# Internal Data Helpers #
+#########################
 
 def _read_osu_hydro(file_path: str, temp_conv_factor: float = 0.1973269788):
     """
