@@ -505,9 +505,9 @@ def aniso_rad_dist(E: float, tau: float, temp: float, uperp: float, uz: float,
     # Warn if we're outside our training domain
     if (tau + dtau) / hbarc > 50.0:
         logging.warning("Particle pathlength is outside of training domain! Good luck!")
-    if temp > 0.650 or temp < 0.150:
+    if temp > 0.70 or temp < 0.150:
         logging.warning("Temperature is outside of training domain! Good luck!")
-    if uperp > 0.9 or uperp < 0.0:
+    if uperp > 0.999 or uperp < 0.0:
         logging.warning("Perp. velocity is outside of training domain! Good luck!")
 
     # Compute NN distribution of radiation generated in this step -- still unnormalized at this point
