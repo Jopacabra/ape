@@ -753,11 +753,18 @@ def aniso_nn_rate_and_k(particle: hard_particles.Particle, medium: plasma.plasma
     num_phi_points = 32
 
     # Compute radiation kinematic bounds -- see https://arxiv.org/abs/nucl-th/0112071
-    x_min = mu / E  # Minimum x based on minimum plasmon frequency
-    x_max = 1 - x_min  # Maximum based on consistency with minimum as an IR regulator
-    k_perp_min = mu  # Minimum k_perp based on minimum plasmon frequency
-    # Note: maximum of ((Min[x^2, (1-x)^2]  * E^2) - mu^2) --> (E^2 - mu^2) / 4
-    k_perp_max = np.sqrt(((E ** 2) - (mu **2)) / 4) # Maxium based on requiring positive z mom. of emission & emitter
+    # Note that the energy going into the bounds is the energy in the calculation frame... Currently longitudinal rest
+    # frame of the fluid.
+    gamma = 1 / np.sqrt(1 - uz ** 2)
+    E_prime = gamma * (1 - uz) * E
+    x_min, x_max, k_perp_min, k_perp_max_sq, valid = kinematic_domain(0.5, E_prime, mu)  # x=0.5 maximizes k_perp_max
+    k_perp_max = np.sqrt(k_perp_max_sq)
+
+    # Break if there is no valid radiation regime
+    if not valid:
+        Ng = 0
+        k = np.array([np.nan, np.nan, np.nan])
+        return Ng, k
 
     # Create array of points in x
     x_min_pow = np.log10(x_min)  # minimum power of 10 in x to compute
@@ -869,7 +876,7 @@ def aniso_nn(particle: hard_particles.Particle, plasma_object: plasma.plasma, dt
         Ng, k = aniso_nn_rate_and_k(particle=particle, medium=plasma_object, tau=tau_since_em, dtau=dtau, nn=nn)
 
         # If Ng invalid or zero, break
-        if Ng == 0:  # Rare case caused by net cancellation of positive and negative intensities
+        if Ng == 0:  # No valid kinematics or rare case caused by net cancellation of positive and negative intensities
             break
         elif np.isnan(Ng):  # Reflects a numerical error
             logging.warning(f"NaN expected number of emissions: {Ng}")
