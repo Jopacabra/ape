@@ -15,7 +15,7 @@ from utilities import zeta, perp_vec, rng
 # Get the path of this file and import the radiation NN path
 script_dir = str(Path(__file__).resolve().parent)
 sys.path.append(os.path.join(script_dir, 'flow-rad-nn/'))
-from radiation_nn import RadiationEmulatorInference
+from radiation_nn import RadiationEmulatorInference, kinematic_domain
 
 class HadronGas(Exception):
     """
@@ -451,10 +451,10 @@ def aniso_rad_delta(particle: hard_particles.Particle, medium: plasma.plasma, k:
 # Radiation distribution summoner
 def aniso_rad_dist(E: float, tau: float, temp: float, uperp: float, uz: float,
                    x_values: np.ndarray, k_perp_values: np.ndarray, phi_values: np.ndarray,
-                   dtau: float, nn=None):
+                   dtau: float, nn=None, CR=3):
     """
     Function that generates a 3D numpy array of the number distribution of emitted gluons over the current step in the
-    medium, up to a casimir factor (Don't forget to apply it to the results of this function!).
+    medium.
 
     Returns in the parton frame organized (kperp, phi, x)
     """
@@ -462,15 +462,32 @@ def aniso_rad_dist(E: float, tau: float, temp: float, uperp: float, uz: float,
 
     # Perform longitudinal boost to longitudinal rest frame of the fluid
     """
-    Right now, we're only incorporating the transverse flow. The calculation was done in the longitudinal rest frame
+    The calculation incorporating transverse flow into radiation effects was done in the longitudinal rest frame
     of the fluid. We can easily get around this by performing a boost to the longitudinal rest frame of the fluid, then
     simply boosting the resulting distribution back to the lab frame. In truth, there may be gauge invariance problems
     that are related to this assumption, as well as additional phase features that are neglected.
     
-    For this testing version, we have not yet implemented the longitudinal boost.
+    For the purposes of this discussion, the lab frame is the unprimed frame, and the local fluid rest frame is the 
+    primed frame.
+    
+    For now, we account for longitudinal flow in two ways:
+    
+    1. We boost the longitudinal component of the hard particle's momentum (the energy: massless particles, p_perp=0) 
+    2. We boost the overall pathlength traveled in this step and apply the ratio (tau' / tau) as a normalization factor.
+       This accounts for the effective difference in the "amount of stuff" that we see, but it does not account for the
+       shift in the LPM phase pathlength. This neglects the structural difference in k_perp, but captures the overall 
+       effect on the emission rate. We are transforming the integrated number of scattering centers -- in the lab frame
+       we see more or fewer in the same pathlength, depending on the magnitude of uz.
+    
+    Note: x values remain the same (boost factor is multiplicative in num & den), if k_z || p_z
+    Note: The density and DeBye mass are derived from the Lorentz-invariant local temperature, which is defined
+          for all hydro codes consistently -- not from T^{00} of the energy-momentum tensor, but from the Lorentz
+          invariant energy density defined by the full contraction epsilon = u_{mu} u_{nu} T^{mu nu}.
     """
-    boosted_E = E
-    boosted_x_values = x_values
+    gamma = 1 / np.sqrt(1 - uz**2)
+    E_prime = gamma * (1 - uz) * E
+    dtau_prime = gamma * (1 - uz) * dtau
+    dtau_ratio = dtau_prime / dtau
 
     # Warn if we're outside our training domain
     if (tau + dtau) / hbarc > 50.0:
@@ -482,18 +499,18 @@ def aniso_rad_dist(E: float, tau: float, temp: float, uperp: float, uz: float,
 
     # Compute NN distribution of radiation generated in this step -- still unnormalized at this point
     dtau_rad_dist, _, _, _ = nn.compute_dNdxd2k_grid(
-        E=boosted_E,
+        E=E_prime,
         z0=tau / hbarc,  # tau is in fm, need to give to NN in GeV^{-1}
         u_perp=uperp,
         mu=mu_DeBye(T=temp),
         k_perp_values=k_perp_values,
         phi_values=phi_values,
-        x_values=boosted_x_values,
+        x_values=x_values,
         mask=True,  # Sets all values outside baked-in kinematic bounds to zero
         t234=True)  # Includes numerical integration for terms 2 - 4
 
     # Multiply by constants, density, and energy to get dN/dxd2k properly normalized, UP TO Casimir factor
-    norm = E * rho(temp, soft_pid=0) * (config.constants.G ** 6) / (2 * ((2 * np.pi) ** 3))
+    norm = E_prime * dtau_ratio * rho(temp, soft_pid=0) * CR * (config.constants.G ** 6) / (2 * ((2 * np.pi) ** 3))
     dtau_rad_dist = norm * dtau_rad_dist
 
     # Correlated to the original x_values, this is the distribution in the frame with nonzero longitudinal velocity
@@ -763,9 +780,9 @@ def aniso_nn_rate_and_k(particle: hard_particles.Particle, medium: plasma.plasma
     ####################################################################################
     # Compute the radiation distribution on our desired grid using the neural network. #
     ####################################################################################
-    dtau_rad_dist = CR * aniso_rad_dist(E=E, tau=tau, temp=temp, uperp=uperp, uz=uz,
-                                        x_values=x_values, k_perp_values=k_perp_values, phi_values=phi_values,
-                                        dtau=dtau, nn=nn)
+    dtau_rad_dist = aniso_rad_dist(E=E, tau=tau, temp=temp, uperp=uperp, uz=uz,
+                                    x_values=x_values, k_perp_values=k_perp_values, phi_values=phi_values,
+                                    dtau=dtau, nn=nn, CR=CR)
 
     #################################################################################
     # Integrate the distribution to find the expected number of gluons in this step #
